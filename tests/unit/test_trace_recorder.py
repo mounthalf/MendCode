@@ -24,9 +24,22 @@ def test_trace_event_serializes_expected_fields():
     assert serialized["payload"]["task_id"] == "demo-ci-001"
     assert isinstance(serialized["timestamp"], str)
     assert serialized["timestamp"].startswith("2026-04-20T00:00:00")
+    assert serialized["timestamp"].endswith(("Z", "+00:00"))
 
 
-@pytest.mark.parametrize("run_id", ["", "../escape", "bad/name", r"bad\name", "bad..name"])
+@pytest.mark.parametrize(
+    "run_id",
+    [
+        "",
+        "../escape",
+        "bad/name",
+        r"bad\name",
+        " bad",
+        ".bad",
+        "bad.",
+        "con",
+    ],
+)
 def test_trace_event_rejects_unsafe_run_id(run_id):
     with pytest.raises(ValueError):
         TraceEvent(

@@ -1,7 +1,11 @@
+import re
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_RESERVED_RUN_IDS = {"con", "prn", "aux", "nul", "com1", "lpt1"}
 
 
 class TraceEvent(BaseModel):
@@ -16,6 +20,12 @@ class TraceEvent(BaseModel):
     @field_validator("run_id")
     @classmethod
     def validate_run_id(cls, value: str) -> str:
-        if not value or "/" in value or "\\" in value or ".." in value:
+        if not value:
+            raise ValueError("run_id must be a safe filename")
+        if not _RUN_ID_PATTERN.fullmatch(value):
+            raise ValueError("run_id must be a safe filename")
+        if value.endswith("."):
+            raise ValueError("run_id must be a safe filename")
+        if value.lower() in _RESERVED_RUN_IDS:
             raise ValueError("run_id must be a safe filename")
         return value
