@@ -18,7 +18,7 @@ class Settings(BaseModel):
 
 
 def get_settings() -> Settings:
-    root = Path(getenv("MENDCODE_PROJECT_ROOT", DEFAULT_PROJECT_ROOT)).resolve()
+    root = Path(getenv("MENDCODE_PROJECT_ROOT", Path.cwd())).resolve()
     data_dir = root / "data"
     return Settings(
         app_name=APP_NAME,

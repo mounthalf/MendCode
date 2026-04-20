@@ -1,4 +1,5 @@
-from app.config import settings as settings_module
+from pathlib import Path
+
 from app.config.settings import get_settings
 from app.core.paths import ensure_data_directories
 
@@ -19,7 +20,8 @@ def test_settings_uses_default_project_root_when_env_unset(monkeypatch):
 
     settings = get_settings()
 
-    assert settings.project_root == settings_module.DEFAULT_PROJECT_ROOT
+    assert settings.project_root == Path.cwd().resolve()
+    assert settings.data_dir == Path.cwd().resolve() / "data"
 
 
 def test_ensure_data_directories_creates_missing_directories(monkeypatch, tmp_path):

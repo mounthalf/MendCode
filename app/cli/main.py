@@ -49,6 +49,9 @@ def _load_task_spec_or_exit(file_path: Path):
 
     try:
         return load_task_spec(file_path)
+    except OSError as exc:
+        typer.echo(f"Task file could not be read: {exc}")
+        raise typer.Exit(code=1)
     except json.JSONDecodeError as exc:
         typer.echo(f"Task file is not valid JSON: {exc.msg}")
         raise typer.Exit(code=1)

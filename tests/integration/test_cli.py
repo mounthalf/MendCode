@@ -59,6 +59,15 @@ def test_task_validate_missing_file_returns_error(monkeypatch, tmp_path):
     assert f"Task file not found: {missing_file}" in result.stdout
 
 
+def test_task_validate_directory_returns_read_error(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+
+    result = runner.invoke(app, ["task", "validate", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "Task file could not be read" in result.stdout
+
+
 def test_task_show_writes_trace_file(monkeypatch, tmp_path):
     monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
     task_file = write_task_file(tmp_path)
