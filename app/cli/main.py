@@ -1,7 +1,9 @@
+import json
 from pathlib import Path
 from uuid import uuid4
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -40,15 +42,31 @@ def health() -> None:
     console.print(table)
 
 
+def _load_task_spec_or_exit(file_path: Path):
+    if not file_path.exists():
+        typer.echo(f"Task file not found: {file_path}")
+        raise typer.Exit(code=1)
+
+    try:
+        return load_task_spec(file_path)
+    except json.JSONDecodeError as exc:
+        typer.echo(f"Task file is not valid JSON: {exc.msg}")
+        raise typer.Exit(code=1)
+    except ValidationError as exc:
+        message = exc.errors()[0]["msg"] if exc.errors() else "unknown validation error"
+        typer.echo(f"Task file failed schema validation: {message}")
+        raise typer.Exit(code=1)
+
+
 @task_app.command("validate")
 def validate_task(file_path: Path) -> None:
-    task = load_task_spec(file_path)
+    task = _load_task_spec_or_exit(file_path)
     console.print(f"Task file is valid: {task.task_id} ({task.task_type})")
 
 
 @task_app.command("show")
 def show_task(file_path: Path) -> None:
-    task = load_task_spec(file_path)
+    task = _load_task_spec_or_exit(file_path)
     settings = get_settings()
     ensure_data_directories(settings)
     recorder = TraceRecorder(settings.traces_dir)
