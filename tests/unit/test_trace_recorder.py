@@ -38,6 +38,9 @@ def test_trace_event_serializes_expected_fields():
         ".bad",
         "bad.",
         "con",
+        "con.txt",
+        "com2",
+        "lpt2",
     ],
 )
 def test_trace_event_rejects_unsafe_run_id(run_id):

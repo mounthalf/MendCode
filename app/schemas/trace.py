@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_RESERVED_RUN_IDS = {"con", "prn", "aux", "nul", "com1", "lpt1"}
+_RESERVED_RUN_ID_STEM = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])$", re.IGNORECASE)
 
 
 class TraceEvent(BaseModel):
@@ -26,6 +26,6 @@ class TraceEvent(BaseModel):
             raise ValueError("run_id must be a safe filename")
         if value.endswith("."):
             raise ValueError("run_id must be a safe filename")
-        if value.lower() in _RESERVED_RUN_IDS:
+        if _RESERVED_RUN_ID_STEM.fullmatch(value.split(".", 1)[0]):
             raise ValueError("run_id must be a safe filename")
         return value
