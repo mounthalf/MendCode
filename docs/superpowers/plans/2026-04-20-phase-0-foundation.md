@@ -565,6 +565,7 @@ git commit -m "feat: add trace schema and recorder"
 import json
 from pathlib import Path
 
+import orjson
 from typer.testing import CliRunner
 
 from app.cli.main import app
@@ -600,6 +601,7 @@ def test_health_command_reports_status(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert "MendCode" in result.stdout
     assert "status" in result.stdout
+    assert str(tmp_path / "data" / "traces") in result.stdout
 
 
 def test_task_validate_command_accepts_valid_file(monkeypatch, tmp_path):
@@ -611,6 +613,15 @@ def test_task_validate_command_accepts_valid_file(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert "Task file is valid" in result.stdout
     assert "demo-ci-001" in result.stdout
+
+
+def test_task_validate_returns_user_facing_error_for_missing_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+
+    result = runner.invoke(app, ["task", "validate", str(tmp_path / "missing.json")])
+
+    assert result.exit_code != 0
+    assert "Task file not found" in result.stdout
 
 
 def test_task_show_writes_trace_file(monkeypatch, tmp_path):
@@ -625,6 +636,10 @@ def test_task_show_writes_trace_file(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert "Fix failing unit test" in result.stdout
     assert len(trace_files) == 1
+    payload = orjson.loads(trace_files[0].read_bytes().splitlines()[0])
+    assert payload["event_type"] == "task.show"
+    assert payload["payload"]["task_id"] == "demo-ci-001"
+    assert payload["payload"]["title"] == "Fix failing unit test"
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -644,10 +659,12 @@ mendcode = "app.cli.main:app"
 `app/cli/main.py`
 
 ```python
+import json
 from pathlib import Path
 from uuid import uuid4
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -688,13 +705,33 @@ def health() -> None:
 
 @task_app.command("validate")
 def validate_task(file_path: Path) -> None:
-    task = load_task_spec(file_path)
+    try:
+        task = load_task_spec(file_path)
+    except FileNotFoundError:
+        console.print(f"Task file not found: {file_path}")
+        raise typer.Exit(code=1)
+    except json.JSONDecodeError as exc:
+        console.print(f"Task file is not valid JSON: {exc}")
+        raise typer.Exit(code=1)
+    except ValidationError as exc:
+        console.print(f"Task file failed schema validation: {exc}")
+        raise typer.Exit(code=1)
     console.print(f"Task file is valid: {task.task_id} ({task.task_type})")
 
 
 @task_app.command("show")
 def show_task(file_path: Path) -> None:
-    task = load_task_spec(file_path)
+    try:
+        task = load_task_spec(file_path)
+    except FileNotFoundError:
+        console.print(f"Task file not found: {file_path}")
+        raise typer.Exit(code=1)
+    except json.JSONDecodeError as exc:
+        console.print(f"Task file is not valid JSON: {exc}")
+        raise typer.Exit(code=1)
+    except ValidationError as exc:
+        console.print(f"Task file failed schema validation: {exc}")
+        raise typer.Exit(code=1)
     settings = get_settings()
     ensure_data_directories(settings)
     recorder = TraceRecorder(settings.traces_dir)
