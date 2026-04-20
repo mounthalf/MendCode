@@ -2,10 +2,12 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     task_id: str
     task_type: Literal["ci_fix", "test_regression_fix", "pr_review"]
     title: str
