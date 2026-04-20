@@ -170,6 +170,7 @@ MendCode/
 
 - 定义最小 `TraceEvent`
 - 为 JSONL trace 提供结构化输出
+- 对 trace 基础字段做严格校验，避免拼写错误被静默吞掉
 
 建议字段：
 
@@ -178,6 +179,9 @@ MendCode/
 - `message`
 - `timestamp`
 - `payload`
+
+其中 `run_id` 需要满足可安全映射为单个文件名的约束，不能包含路径穿越或平台不兼容字符。
+建议采用白名单约束，而不是只做黑名单过滤。
 
 ### 6.5 `app/config/settings.py`
 
@@ -217,6 +221,7 @@ MendCode/
 - 单次写入一个事件
 - 自动创建 trace 目录
 - 文件命名稳定，便于后续按 `run_id` 聚合
+- 不应直接信任未校验的 `run_id` 去拼接路径
 
 ## 7. 任务文件格式
 

@@ -423,6 +423,7 @@ git commit -m "feat: add task schema and demo fixture"
 import json
 from datetime import UTC, datetime
 
+import pytest
 from app.schemas.trace import TraceEvent
 from app.tracing.recorder import TraceRecorder
 
@@ -436,8 +437,22 @@ def test_trace_event_serializes_expected_fields():
         payload={"task_id": "demo-ci-001"},
     )
 
-    assert event.run_id == "run-001"
-    assert event.payload["task_id"] == "demo-ci-001"
+    serialized = event.model_dump(mode="json")
+
+    assert serialized["run_id"] == "run-001"
+    assert serialized["event_type"] == "task.show"
+    assert serialized["message"] == "Previewed task"
+    assert serialized["payload"]["task_id"] == "demo-ci-001"
+    assert isinstance(serialized["timestamp"], str)
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    ["", "../bad", "bad/name", r"bad\\name", " bad", ".hidden", "trail.", "con"],
+)
+def test_trace_event_rejects_unsafe_run_id(run_id):
+    with pytest.raises(ValueError):
+        TraceEvent(run_id=run_id, event_type="task.show", message="bad")
 
 
 def test_trace_recorder_writes_jsonl_file(tmp_path):
@@ -452,9 +467,14 @@ def test_trace_recorder_writes_jsonl_file(tmp_path):
     output_path = recorder.record(event)
 
     lines = output_path.read_text(encoding="utf-8").strip().splitlines()
+    payload = json.loads(lines[0])
+
     assert output_path.name == "run-001.jsonl"
     assert len(lines) == 1
-    assert json.loads(lines[0])["event_type"] == "task.show"
+    assert payload["run_id"] == "run-001"
+    assert payload["event_type"] == "task.show"
+    assert payload["message"] == "Previewed task"
+    assert payload["payload"]["task_id"] == "demo-ci-001"
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -467,18 +487,33 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'app.schemas.trace'`
 `app/schemas/trace.py`
 
 ```python
+import re
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TraceEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     run_id: str
     event_type: str
     message: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     payload: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("run_id")
+    @classmethod
+    def validate_run_id(cls, value: str) -> str:
+        if not value:
+            raise ValueError("run_id must not be empty")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", value):
+            raise ValueError("run_id must be a safe filename segment")
+        if value.endswith("."):
+            raise ValueError("run_id must not end with a dot")
+        if value.lower() in {"con", "prn", "aux", "nul", "com1", "lpt1"}:
+            raise ValueError("run_id uses a reserved filename")
+        return value
 ```
 
 `app/tracing/recorder.py`
