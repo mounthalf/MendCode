@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the implementation deliberately small. Phase 0 creates only the stable interfaces that Phase 1 will reuse: package metadata, settings/path resolution, task and trace schemas, a trace recorder, CLI commands, and an API health endpoint. It does not implement orchestrator, tools, or worktree execution yet.
 
-**Tech Stack:** Python 3.12+, Typer, FastAPI, Pydantic v2, pytest, ruff, orjson, uvicorn
+**Tech Stack:** Python 3.11+, Typer, FastAPI, Pydantic v2, pytest, ruff, orjson, uvicorn
 
 ---
 
@@ -51,10 +51,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mendcode"
-version = "0.1.0"
 description = "A maintenance agent for enterprise local repositories"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
+dynamic = ["version"]
 dependencies = [
   "fastapi==0.136.0",
   "uvicorn[standard]==0.44.0",
@@ -69,11 +69,18 @@ dependencies = [
   "tree-sitter==0.25.2",
   "tree-sitter-language-pack==1.6.2",
   "openai==2.32.0",
+  "watchfiles==1.1.1",
+]
+
+[project.optional-dependencies]
+dev = [
   "pytest==9.0.3",
   "pytest-asyncio==1.3.0",
   "ruff==0.15.11",
-  "watchfiles==1.1.1",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "app.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["app*"]
@@ -84,7 +91,7 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
@@ -96,6 +103,8 @@ select = ["E", "F", "I"]
 APP_NAME = "MendCode"
 __version__ = "0.1.0"
 ```
+
+Note: keep `app.__version__` as the single source of truth and source the package version from it in `pyproject.toml`.
 
 Create these package markers with the same content:
 
@@ -790,7 +799,7 @@ Replace `README.md` with:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pip install -e .
+pip install -e ".[dev]"
 ```
 
 ## CLI

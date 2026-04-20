@@ -9,6 +9,7 @@
 - worktree 位置使用项目内隐藏目录 `.worktrees/`
 - Phase 0 完成度为“工程骨架 + 最小任务入口”
 - 使用 `pyproject.toml` 作为主配置，同时保留 `requirements.txt` 兼容现有依赖方式
+- 当前实现环境按 Python 3.11 对齐，而不是预期中的 3.12
 
 ## 2. 目标
 
@@ -55,6 +56,14 @@ Phase 0 只实现后续阶段一定会复用的稳定边界：配置、schema、
 ### 4.4 后续兼容
 
 虽然本阶段不实现任务执行，但 `TaskSpec`、路径约定和 trace 结构必须考虑后续 Phase 1 直接接入，避免下一阶段推倒重来。
+
+### 4.5 工程配置去重复
+
+基础工程配置应避免无意义重复和运行时污染。对于 `pyproject.toml`：
+
+- 包版本应与应用元数据保持单一事实来源
+- 测试与 lint 工具应放在开发依赖中，而不是运行时依赖中
+- 运行时依赖应只保留 Phase 0 真正需要的应用依赖
 
 ## 5. 目录结构
 
@@ -182,6 +191,8 @@ MendCode/
 - `data/tasks`
 - `data/traces`
 - 应用版本
+
+应用版本在工程配置上应由 `app.__version__` 统一导出，以避免 `pyproject.toml` 和运行时代码形成双源维护。
 
 ### 6.6 `app/core/paths.py`
 
@@ -326,6 +337,8 @@ Phase 0 完成时必须满足以下条件：
 - `/healthz` 返回 200
 - `pyproject.toml` 成为主配置来源
 - `requirements.txt` 继续保留
+- `pyproject.toml` 中的版本定义与运行时元数据保持单一来源
+- `pytest`、`pytest-asyncio`、`ruff` 不作为运行时依赖安装
 
 ## 11. 风险与控制
 
