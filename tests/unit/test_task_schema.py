@@ -60,6 +60,22 @@ def test_task_spec_rejects_unexpected_extra_field(tmp_path):
         TaskSpec.model_validate(payload)
 
 
+def test_task_spec_defaults_optional_fields_when_omitted(tmp_path):
+    payload = {
+        "task_id": "default-001",
+        "task_type": "ci_fix",
+        "title": "Defaults task",
+        "repo_path": str(tmp_path),
+        "entry_artifacts": {"log": "ok"},
+        "verification_commands": ["pytest -q"],
+    }
+
+    task = TaskSpec.model_validate(payload)
+
+    assert task.allowed_tools == []
+    assert task.metadata == {}
+
+
 def test_load_task_spec_from_fixture():
     fixture_path = Path(__file__).resolve().parents[2] / "data" / "tasks" / "demo.json"
     task = load_task_spec(fixture_path)
