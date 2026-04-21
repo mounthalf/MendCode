@@ -79,7 +79,7 @@ def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
             except OSError as exc:
                 exit_code = -1
                 stdout_excerpt = ""
-                stderr_excerpt = _trim_output(str(exc))
+                stderr_excerpt = str(exc)
 
             duration_ms = int((time.perf_counter() - started_at) * 1000)
             status = "passed" if exit_code == 0 else "failed"
@@ -105,6 +105,8 @@ def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
                         "exit_code": command_result.exit_code,
                         "status": command_result.status,
                         "duration_ms": command_result.duration_ms,
+                        "stdout_excerpt": command_result.stdout_excerpt,
+                        "stderr_excerpt": command_result.stderr_excerpt,
                     },
                 )
             )

@@ -48,6 +48,8 @@ def test_run_task_preview_writes_started_and_completed_events(tmp_path):
     assert events[1]["payload"]["status"] == "running"
     assert events[1]["payload"]["command_count"] == 1
     assert events[2]["payload"]["command"] == "python -c \"print('ok')\""
+    assert events[2]["payload"]["stdout_excerpt"] == "ok\n"
+    assert events[2]["payload"]["stderr_excerpt"] == ""
     assert events[3]["payload"]["status"] == "completed"
 
 
@@ -129,3 +131,31 @@ def test_run_task_preview_fails_when_no_verification_commands_are_defined(tmp_pa
     assert result.verification is not None
     assert result.verification.failed_count == 1
     assert result.summary == "Verification failed: no verification commands provided"
+
+
+def test_run_task_preview_records_exact_oserror_text_without_trimming(tmp_path, monkeypatch):
+    exact_error = "x" * 2501
+
+    def raise_oserror(*args, **kwargs):
+        raise OSError(exact_error)
+
+    monkeypatch.setattr("app.orchestrator.runner.subprocess.run", raise_oserror)
+
+    task = TaskSpec(
+        task_id="demo-ci-001",
+        task_type="ci_fix",
+        title="OSError path",
+        repo_path="/repo/demo",
+        entry_artifacts={},
+        verification_commands=["python -c \"print('ok')\""],
+    )
+
+    result = run_task_preview(task, tmp_path)
+    trace_file = Path(result.trace_path)
+    events = [json.loads(line) for line in trace_file.read_text(encoding="utf-8").strip().splitlines()]
+
+    assert result.status == "failed"
+    assert result.verification is not None
+    assert result.verification.failed_count == 1
+    assert result.verification.command_results[0].stderr_excerpt == exact_error
+    assert events[2]["payload"]["stderr_excerpt"] == exact_error
