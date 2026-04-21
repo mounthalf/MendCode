@@ -2,12 +2,12 @@
 
 一款专为企业本地环境设计的代码维护 Agent。
 
-## Phase 0 Capabilities
+## Current Capabilities
 
 - Python project skeleton with `pyproject.toml`
-- CLI health check and task file inspection
+- CLI health check, task file inspection, and minimal `task run` preview
 - FastAPI health endpoint
-- JSONL trace output for task previews
+- JSONL trace output for task run previews
 
 ## Install
 
