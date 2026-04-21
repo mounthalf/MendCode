@@ -64,3 +64,62 @@ def test_verification_schema_rejects_invalid_status():
             stdout_excerpt="ok",
             stderr_excerpt="",
         )
+
+
+def test_verification_result_rejects_invalid_status():
+    with pytest.raises(ValidationError):
+        VerificationResult(
+            status="unknown",
+            passed_count=0,
+            failed_count=0,
+            command_results=[],
+        )
+
+
+def test_verification_result_rejects_inconsistent_aggregate():
+    with pytest.raises(ValidationError):
+        VerificationResult(
+            status="passed",
+            passed_count=2,
+            failed_count=1,
+            command_results=[
+                VerificationCommandResult(
+                    command="pytest -q",
+                    exit_code=0,
+                    status="passed",
+                    duration_ms=120,
+                    stdout_excerpt="2 passed",
+                    stderr_excerpt="",
+                ),
+                VerificationCommandResult(
+                    command="python -m bad.module",
+                    exit_code=1,
+                    status="failed",
+                    duration_ms=80,
+                    stdout_excerpt="",
+                    stderr_excerpt="ModuleNotFoundError",
+                ),
+            ],
+        )
+
+
+def test_verification_models_forbid_extra_fields():
+    with pytest.raises(ValidationError):
+        VerificationCommandResult(
+            command="pytest -q",
+            exit_code=0,
+            status="passed",
+            duration_ms=120,
+            stdout_excerpt="2 passed",
+            stderr_excerpt="",
+            extra_field=True,
+        )
+
+    with pytest.raises(ValidationError):
+        VerificationResult(
+            status="passed",
+            passed_count=0,
+            failed_count=0,
+            command_results=[],
+            extra_field=True,
+        )
