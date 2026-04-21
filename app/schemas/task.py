@@ -4,12 +4,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+TaskType = Literal["ci_fix", "test_regression_fix", "pr_review"]
+
 
 class TaskSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: str
-    task_type: Literal["ci_fix", "test_regression_fix", "pr_review"]
+    task_type: TaskType
     title: str
     repo_path: str
     entry_artifacts: dict[str, Any]
