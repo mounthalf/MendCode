@@ -2,7 +2,7 @@
 
 ## 1. 文档目的
 
-本文档基于 [`rawplan.md`](/home/wxh/MendCode/rawplan.md) 进行收敛和工程化重构，目标是把“面向企业本地代码仓的维护型 Agent”从概念草案整理为一份可以直接执行的开发方案。文档同时结合当前仓库现状进行约束：目前根目录仅有 [`README.md`](/home/wxh/MendCode/README.md) 与 [`requirements.txt`](/home/wxh/MendCode/requirements.txt)，说明项目仍处于初始化阶段，方案必须优先解决最小闭环与工程骨架问题。
+本文档基于 [`rawplan.md`](/home/wxh/MendCode/rawplan.md) 进行收敛和工程化重构，目标是把“面向企业本地代码仓的维护型 Agent”从概念草案整理为一份可以直接执行的开发方案。文档同时结合当前仓库现状进行约束：仓库已经完成 Phase 0 的基础工程骨架，因此当前方案的重点不再是“如何从零开始”，而是“如何在不扩散范围的前提下持续打通 Phase 1 最小闭环”。
 
 本文档关注四件事：
 
@@ -17,17 +17,19 @@
 
 ### 2.1 当前仓库状态
 
-- 项目已进入 Phase 0 实施阶段，基础工程骨架已落地
+- Phase 0 已完成并合并回 `main`
 - 当前已实现的代码骨架包括：
   - `pyproject.toml`
+  - `app/cli/main.py`
+  - `app/api/server.py`
   - `app/config/settings.py`
   - `app/core/paths.py`
   - `app/schemas/task.py`
   - `app/schemas/trace.py`
   - `app/tracing/recorder.py`
-  - 对应的单元测试
+  - 对应的单元测试与集成测试
 - Python 技术栈已明确：FastAPI、Typer、Pydantic、GitPython、tree-sitter、OpenAI SDK、pytest、ruff
-- 当前最关键的工作已经从“收敛方向”切换为“把 Phase 0 完整收口并进入 Phase 1 最小闭环”
+- 当前最关键的工作已经从“收敛方向”切换为“推进 Phase 1A 的最小运行骨架”
 
 ### 2.2 当前实现进展
 
@@ -44,14 +46,19 @@
   - 拒绝未知字段
   - 校验 `run_id`，避免危险文件名
   - 覆盖序列化与 JSON round-trip 测试
+- 建立 CLI 主入口
+  - `version`
+  - `health`
+  - `task validate`
+  - `task show`
+- 建立 FastAPI 最小 `/healthz` 健康检查接口
+- 更新 README，补齐 Phase 0 安装和运行说明
 - 所有以上能力都已通过对应单元测试与代码审查流程
 
-当前尚未完成的 Phase 0 内容主要是：
+当前阶段的重点已经切换为：
 
-- CLI 主入口
-- FastAPI 健康检查接口
-- README 使用说明
-- 端到端 smoke verification
+- 更新根方案文档，使其与仓库真实状态对齐
+- 进入 Phase 1 的第一刀：补最小运行骨架，而不是直接铺开完整修复链
 
 ### 2.3 对初稿的评价
 
@@ -414,8 +421,13 @@ MendCode/
 
 当前状态：
 
-- CLI 尚未落地，是 Phase 0 下一优先任务
-- API 尚未落地，预计在 CLI 后实现最小 `/healthz`
+- CLI 已落地，当前已支持：
+  - `mendcode version`
+  - `mendcode health`
+  - `mendcode task validate`
+  - `mendcode task show`
+- API 已落地，当前已提供最小 `/healthz`
+- 下一步应补 `task run` 与最小 runner，建立真正的运行态骨架
 
 ---
 
@@ -612,13 +624,26 @@ L3 长期记忆：
 
 当前进度：
 
-- 已完成大部分基础骨架
-- 已完成 schema、settings、paths、trace recorder 与对应单元测试
-- 尚未完成 CLI / API / README / 最终 smoke verification
+- Phase 0 已完成并合并回 `main`
+- 已具备 schema、settings、paths、trace recorder、CLI、API 与测试基线
+- 当前不再继续扩充 Phase 0，而是直接进入 Phase 1 的最小执行链建设
 
 ### Phase 1：打通最小修复闭环
 
 目标：只支持 `ci_fix` / `test_regression_fix` 两类任务，跑通完整主链。
+
+当前推荐拆分为两个层次：
+
+- Phase 1A：最小运行骨架
+  - `RunState`
+  - 最小 runner
+  - `task run`
+  - `run.started` / `run.completed` trace
+- Phase 1B：真实执行链
+  - `run_verification`
+  - workspace / worktree
+  - 基础工具
+  - 更完整的 orchestrator 状态推进
 
 交付：
 
@@ -638,8 +663,9 @@ L3 长期记忆：
 
 进入 Phase 1 的前置条件已经更清晰：
 
-- Phase 0 必须先补齐 CLI 任务入口和最小 API 健康检查
-- Phase 0 必须先完成 README 与 smoke verification，确保基础骨架可直接运行
+- Phase 0 前置条件已经满足
+- 下一步应先完成 Phase 1A 的最小运行骨架，避免直接跳入工具和 workspace 细节
+- 在 Phase 1A 未完成前，不应提前实现完整修复链
 
 ### Phase 2：补足上下文工程
 
@@ -736,9 +762,9 @@ L3 长期记忆：
 1. schema
 2. CLI 入口
 3. tracing
-4. workspace
-5. 基础工具
-6. orchestrator
+4. orchestrator 最小运行骨架
+5. workspace
+6. 基础工具
 7. context
 8. eval
 9. API
@@ -822,10 +848,10 @@ L3 长期记忆：
 2. 定义核心 Pydantic schema
 3. 建立 CLI 命令入口
 4. 实现 trace recorder
-5. 实现 worktree manager
-6. 实现 `read_file` / `search_code` / `apply_patch`
-7. 实现 `run_verification`
-8. 实现最小 orchestrator runner
+5. 实现最小 orchestrator runner
+6. 实现 `run_verification`
+7. 实现 worktree manager
+8. 实现 `read_file` / `search_code` / `apply_patch`
 9. 准备 2 条 demo 任务
 10. 补齐单元测试与一条端到端测试
 
@@ -833,9 +859,9 @@ L3 长期记忆：
 
 截至当前的完成情况：
 
-- 已完成：1、2、4、5、9 的基础子集，以及对应单元测试框架
-- 进行中：3、6、7、10
-- 未开始：8 的主循环骨架、端到端测试与后续执行链
+- 已完成：1、2、3、4、9 的基础子集，以及对应单元测试框架
+- 下一优先级：5，也就是最小 orchestrator runner 与 `task run`
+- 暂缓：6、7、8，直到运行骨架先落地
 
 ---
 
