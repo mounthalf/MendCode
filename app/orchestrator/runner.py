@@ -2,6 +2,8 @@ import subprocess
 from pathlib import Path
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from app.config.settings import Settings
 from app.orchestrator.fixed_flow import load_fixed_flow_artifacts, summarize_tool_result
 from app.schemas.run_state import RunState
@@ -39,11 +41,143 @@ def _record_tool_completed(recorder: TraceRecorder, run_id: str, result: ToolRes
     )
 
 
+def _fixed_flow_validation_summary(exc: ValidationError) -> str:
+    errors = exc.errors()
+    if not errors:
+        return "Fixed-flow input invalid"
+
+    error = errors[0]
+    context_error = error.get("ctx", {}).get("error")
+    if context_error is not None:
+        message = str(context_error)
+    else:
+        message = str(error.get("msg", "fixed-flow input invalid"))
+        prefix = "Value error, "
+        if message.startswith(prefix):
+            message = message[len(prefix) :]
+    return f"Fixed-flow input invalid: {message}"
+
+
+def _build_run_state(
+    *,
+    run_id: str,
+    task: TaskSpec,
+    trace_path: Path,
+    workspace_path: Path | None,
+    status: str,
+    summary: str,
+    verification: VerificationResult | None,
+    selected_files: list[str],
+    applied_patch: bool,
+    tool_results: list[dict[str, object]],
+) -> RunState:
+    return RunState(
+        run_id=run_id,
+        task_id=task.task_id,
+        task_type=task.task_type,
+        status=status,
+        current_step="summarize",
+        summary=summary,
+        trace_path=str(trace_path),
+        workspace_path=str(workspace_path) if workspace_path is not None else None,
+        selected_files=selected_files,
+        applied_patch=applied_patch,
+        tool_results=tool_results,
+        verification=verification,
+    )
+
+
+def _has_fixed_flow_artifacts(entry_artifacts: dict[str, object]) -> bool:
+    return bool(
+        {
+            "search_query",
+            "target_path_glob",
+            "read_target_path",
+            "read_start_line",
+            "read_end_line",
+            "old_text",
+            "new_text",
+            "expected_verification_hint",
+        }
+        & set(entry_artifacts)
+    )
+
+
+def _finalize_run_state(
+    *,
+    recorder: TraceRecorder,
+    run_id: str,
+    task: TaskSpec,
+    trace_path: Path,
+    repo_path: Path,
+    workspace_path: Path | None,
+    status: str,
+    summary: str,
+    verification: VerificationResult | None,
+    selected_files: list[str],
+    applied_patch: bool,
+    tool_results: list[dict[str, object]],
+    cleanup_success_workspace: bool,
+) -> RunState:
+    cleanup = WorkspaceCleanupResult(
+        workspace_path=str(workspace_path) if workspace_path is not None else None,
+        cleanup_attempted=False,
+        cleanup_succeeded=False,
+        cleanup_reason="workspace preserved" if workspace_path is not None else "workspace not created",
+    )
+    if (
+        status == "completed"
+        and workspace_path is not None
+        and cleanup_success_workspace
+    ):
+        cleanup = cleanup_worktree(repo_path=repo_path, workspace_path=workspace_path)
+        if not cleanup.cleanup_succeeded:
+            summary = f"{summary}; workspace cleanup failed: {cleanup.cleanup_reason}"
+
+    trace_path = recorder.record(
+        TraceEvent(
+            run_id=run_id,
+            event_type="run.workspace.cleanup",
+            message="Recorded workspace cleanup decision",
+            payload=cleanup.model_dump(mode="json"),
+        )
+    )
+    trace_path = recorder.record(
+        TraceEvent(
+            run_id=run_id,
+            event_type="run.completed",
+            message="Completed task preview run",
+            payload={
+                "task_id": task.task_id,
+                "task_type": task.task_type,
+                "status": status,
+                "summary": summary,
+                "workspace_path": str(workspace_path) if workspace_path is not None else None,
+            },
+        )
+    )
+    return _build_run_state(
+        run_id=run_id,
+        task=task,
+        trace_path=trace_path,
+        workspace_path=workspace_path,
+        status=status,
+        summary=summary,
+        verification=verification,
+        selected_files=selected_files,
+        applied_patch=applied_patch,
+        tool_results=tool_results,
+    )
+
+
 def run_task_preview(task: TaskSpec, settings: Settings) -> RunState:
     recorder = TraceRecorder(settings.traces_dir)
     run_id = f"preview-{uuid4().hex[:12]}"
     repo_path = Path(task.repo_path)
     workspace_path: Path | None = None
+    selected_files: list[str] = []
+    applied_patch = False
+    tool_results: list[dict[str, object]] = []
 
     try:
         workspace_path = prepare_worktree(
@@ -98,16 +232,17 @@ def run_task_preview(task: TaskSpec, settings: Settings) -> RunState:
                 },
             )
         )
-        return RunState(
+        return _build_run_state(
             run_id=run_id,
-            task_id=task.task_id,
-            task_type=task.task_type,
-            status="failed",
-            current_step="summarize",
-            summary=summary,
-            trace_path=str(trace_path),
+            task=task,
+            trace_path=trace_path,
             workspace_path=None,
+            status="failed",
+            summary=summary,
             verification=None,
+            selected_files=selected_files,
+            applied_patch=applied_patch,
+            tool_results=tool_results,
         )
 
     trace_path = recorder.record(
@@ -124,6 +259,128 @@ def run_task_preview(task: TaskSpec, settings: Settings) -> RunState:
             },
         )
     )
+
+    if task.entry_artifacts and _has_fixed_flow_artifacts(task.entry_artifacts):
+        try:
+            artifacts = load_fixed_flow_artifacts(task.entry_artifacts)
+        except ValidationError as exc:
+            return _finalize_run_state(
+                recorder=recorder,
+                run_id=run_id,
+                task=task,
+                trace_path=trace_path,
+                repo_path=repo_path,
+                workspace_path=workspace_path,
+                status="failed",
+                summary=_fixed_flow_validation_summary(exc),
+                verification=None,
+                selected_files=selected_files,
+                applied_patch=applied_patch,
+                tool_results=tool_results,
+                cleanup_success_workspace=settings.cleanup_success_workspace,
+            )
+
+        if artifacts.read_target_path is not None:
+            selected_files = [artifacts.read_target_path]
+        else:
+            trace_path = _record_tool_started(recorder, run_id, "search_code", workspace_path)
+            search_result = search_code(
+                workspace_path=workspace_path,
+                query=artifacts.search_query or "",
+                glob=artifacts.target_path_glob,
+                max_results=2,
+            )
+            tool_results.append(summarize_tool_result(search_result))
+            trace_path = _record_tool_completed(recorder, run_id, search_result)
+            if search_result.status != "passed":
+                return _finalize_run_state(
+                    recorder=recorder,
+                    run_id=run_id,
+                    task=task,
+                    trace_path=trace_path,
+                    repo_path=repo_path,
+                    workspace_path=workspace_path,
+                    status="failed",
+                    summary=f"Fixed-flow failed: {search_result.summary}",
+                    verification=None,
+                    selected_files=selected_files,
+                    applied_patch=applied_patch,
+                    tool_results=tool_results,
+                    cleanup_success_workspace=settings.cleanup_success_workspace,
+                )
+
+            matches = search_result.payload.get("matches", [])
+            if len(matches) != 1:
+                return _finalize_run_state(
+                    recorder=recorder,
+                    run_id=run_id,
+                    task=task,
+                    trace_path=trace_path,
+                    repo_path=repo_path,
+                    workspace_path=workspace_path,
+                    status="failed",
+                    summary=f"Fixed-flow failed: search_code returned {len(matches)} candidate files",
+                    verification=None,
+                    selected_files=[],
+                    applied_patch=applied_patch,
+                    tool_results=tool_results,
+                    cleanup_success_workspace=settings.cleanup_success_workspace,
+                )
+            selected_files = [str(matches[0]["relative_path"])]
+
+        trace_path = _record_tool_started(recorder, run_id, "read_file", workspace_path)
+        read_result = read_file(
+            workspace_path=workspace_path,
+            relative_path=selected_files[0],
+            start_line=artifacts.read_start_line,
+            end_line=artifacts.read_end_line,
+        )
+        tool_results.append(summarize_tool_result(read_result))
+        trace_path = _record_tool_completed(recorder, run_id, read_result)
+        if read_result.status != "passed":
+            return _finalize_run_state(
+                recorder=recorder,
+                run_id=run_id,
+                task=task,
+                trace_path=trace_path,
+                repo_path=repo_path,
+                workspace_path=workspace_path,
+                status="failed",
+                summary=f"Fixed-flow failed: {read_result.summary}",
+                verification=None,
+                selected_files=selected_files,
+                applied_patch=applied_patch,
+                tool_results=tool_results,
+                cleanup_success_workspace=settings.cleanup_success_workspace,
+            )
+
+        trace_path = _record_tool_started(recorder, run_id, "apply_patch", workspace_path)
+        patch_result = apply_patch(
+            workspace_path=workspace_path,
+            relative_path=selected_files[0],
+            old_text=artifacts.old_text,
+            new_text=artifacts.new_text,
+        )
+        tool_results.append(summarize_tool_result(patch_result))
+        trace_path = _record_tool_completed(recorder, run_id, patch_result)
+        if patch_result.status != "passed":
+            return _finalize_run_state(
+                recorder=recorder,
+                run_id=run_id,
+                task=task,
+                trace_path=trace_path,
+                repo_path=repo_path,
+                workspace_path=workspace_path,
+                status="failed",
+                summary=f"Fixed-flow failed: {patch_result.summary}",
+                verification=None,
+                selected_files=selected_files,
+                applied_patch=applied_patch,
+                tool_results=tool_results,
+                cleanup_success_workspace=settings.cleanup_success_workspace,
+            )
+        applied_patch = True
+
     trace_path = recorder.record(
         TraceEvent(
             run_id=run_id,
@@ -213,48 +470,18 @@ def run_task_preview(task: TaskSpec, settings: Settings) -> RunState:
             f"{verification.failed_count} of {len(command_results)} commands failed"
         )
 
-    cleanup = WorkspaceCleanupResult(
-        workspace_path=str(workspace_path),
-        cleanup_attempted=False,
-        cleanup_succeeded=False,
-        cleanup_reason="workspace preserved",
-    )
-    if run_status == "completed" and settings.cleanup_success_workspace:
-        cleanup = cleanup_worktree(repo_path=repo_path, workspace_path=workspace_path)
-        if not cleanup.cleanup_succeeded:
-            summary = f"{summary}; workspace cleanup failed: {cleanup.cleanup_reason}"
-
-    trace_path = recorder.record(
-        TraceEvent(
-            run_id=run_id,
-            event_type="run.workspace.cleanup",
-            message="Recorded workspace cleanup decision",
-            payload=cleanup.model_dump(mode="json"),
-        )
-    )
-    trace_path = recorder.record(
-        TraceEvent(
-            run_id=run_id,
-            event_type="run.completed",
-            message="Completed task preview run",
-            payload={
-                "task_id": task.task_id,
-                "task_type": task.task_type,
-                "status": run_status,
-                "summary": summary,
-                "workspace_path": str(workspace_path),
-            },
-        )
-    )
-
-    return RunState(
+    return _finalize_run_state(
+        recorder=recorder,
         run_id=run_id,
-        task_id=task.task_id,
-        task_type=task.task_type,
+        task=task,
+        trace_path=trace_path,
+        repo_path=repo_path,
+        workspace_path=workspace_path,
         status=run_status,
-        current_step="summarize",
         summary=summary,
-        trace_path=str(trace_path),
-        workspace_path=str(workspace_path),
         verification=verification,
+        selected_files=selected_files,
+        applied_patch=applied_patch,
+        tool_results=tool_results,
+        cleanup_success_workspace=settings.cleanup_success_workspace,
     )
