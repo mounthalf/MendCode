@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 from uuid import uuid4
 
@@ -25,7 +26,7 @@ def run_task_preview(task: TaskSpec, settings: Settings) -> RunState:
             run_id=run_id,
             base_ref=task.base_ref,
         )
-    except Exception as exc:
+    except (subprocess.CalledProcessError, OSError) as exc:
         trace_path = recorder.record(
             TraceEvent(
                 run_id=run_id,
@@ -40,7 +41,10 @@ def run_task_preview(task: TaskSpec, settings: Settings) -> RunState:
                 },
             )
         )
-        summary = f"Workspace setup failed: {exc}"
+        failure_detail = str(exc)
+        if isinstance(exc, subprocess.CalledProcessError):
+            failure_detail = exc.stderr or exc.stdout or str(exc)
+        summary = f"Workspace setup failed: {failure_detail.strip()}"
         trace_path = recorder.record(
             TraceEvent(
                 run_id=run_id,
@@ -191,6 +195,8 @@ def run_task_preview(task: TaskSpec, settings: Settings) -> RunState:
     )
     if run_status == "completed" and settings.cleanup_success_workspace:
         cleanup = cleanup_worktree(repo_path=repo_path, workspace_path=workspace_path)
+        if not cleanup.cleanup_succeeded:
+            summary = f"{summary}; workspace cleanup failed: {cleanup.cleanup_reason}"
 
     trace_path = recorder.record(
         TraceEvent(

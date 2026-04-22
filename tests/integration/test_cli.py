@@ -213,5 +213,5 @@ def test_task_run_reports_failed_verification_without_cli_crash(monkeypatch, tmp
     assert "failed" in result.stdout
     assert "passed_count" in result.stdout
     assert "failed_count" in result.stdout
-    assert "First failed command:" in result.stdout
+    assert "First non-passed command: failed" in result.stdout
     assert f'{PYTHON} -c "import sys; sys.exit(3)"' in result.stdout

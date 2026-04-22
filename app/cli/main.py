@@ -135,7 +135,8 @@ def run_task(file_path: Path) -> None:
         )
         if first_non_passed is not None:
             console.print(
-                f"First failed command: {first_non_passed.command} "
+                f"First non-passed command: {first_non_passed.status}: "
+                f"{first_non_passed.command} "
                 f"(exit {first_non_passed.exit_code})"
             )
 

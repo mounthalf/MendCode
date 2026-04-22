@@ -8,6 +8,7 @@ from app.config.settings import Settings
 from app.orchestrator.runner import run_task_preview
 from app.schemas.task import TaskSpec
 from app.schemas.verification import VerificationCommandResult
+from app.workspace.worktree import WorkspaceCleanupResult
 
 PYTHON = shlex.quote(sys.executable)
 
@@ -293,6 +294,69 @@ def test_run_task_preview_cleans_success_workspace_when_enabled(tmp_path):
     assert result.status == "completed"
     assert result.workspace_path is not None
     assert not Path(result.workspace_path).exists()
+
+
+def test_run_task_preview_reports_workspace_setup_failure_detail(tmp_path, monkeypatch):
+    repo_path = init_git_repo(tmp_path)
+    task = TaskSpec(
+        task_id="demo-ci-001",
+        task_type="ci_fix",
+        title="Workspace setup failure",
+        repo_path=str(repo_path),
+        base_ref="missing-ref",
+        entry_artifacts={},
+        verification_commands=[f"{PYTHON} -c \"print('ok')\""],
+    )
+
+    monkeypatch.setattr(
+        "app.orchestrator.runner.prepare_worktree",
+        lambda **kwargs: (_ for _ in ()).throw(
+            subprocess.CalledProcessError(
+                returncode=128,
+                cmd=["git", "worktree", "add"],
+                stderr="fatal: invalid reference: missing-ref\n",
+            )
+        ),
+    )
+
+    result = run_task_preview(task, build_settings(tmp_path))
+
+    assert result.status == "failed"
+    assert result.workspace_path is None
+    assert result.verification is None
+    assert "Workspace setup failed:" in result.summary
+    assert "fatal: invalid reference: missing-ref" in result.summary
+
+
+def test_run_task_preview_reports_cleanup_failure_when_enabled(tmp_path, monkeypatch):
+    repo_path = init_git_repo(tmp_path)
+    settings = build_settings(tmp_path, cleanup_success_workspace=True)
+    task = TaskSpec(
+        task_id="demo-ci-001",
+        task_type="ci_fix",
+        title="Cleanup failure",
+        repo_path=str(repo_path),
+        base_ref=None,
+        entry_artifacts={},
+        verification_commands=[f"{PYTHON} -c \"print('ok')\""],
+    )
+
+    monkeypatch.setattr(
+        "app.orchestrator.runner.cleanup_worktree",
+        lambda **kwargs: WorkspaceCleanupResult(
+            workspace_path=str(tmp_path / ".worktrees" / "preview-demo"),
+            cleanup_attempted=True,
+            cleanup_succeeded=False,
+            cleanup_reason="git worktree remove failed",
+        ),
+    )
+
+    result = run_task_preview(task, settings)
+
+    assert result.status == "completed"
+    assert result.workspace_path is not None
+    assert "Verification passed: 1/1 commands succeeded" in result.summary
+    assert "workspace cleanup failed: git worktree remove failed" in result.summary
 
 
 def test_run_task_preview_trims_completed_command_output_to_excerpt_limit(tmp_path):
