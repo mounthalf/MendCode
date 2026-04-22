@@ -1,26 +1,88 @@
 import subprocess
-import time
 from pathlib import Path
 from uuid import uuid4
 
+from app.config.settings import Settings
 from app.schemas.run_state import RunState
 from app.schemas.task import TaskSpec
 from app.schemas.trace import TraceEvent
 from app.schemas.verification import VerificationCommandResult, VerificationResult
 from app.tracing.recorder import TraceRecorder
-
-_OUTPUT_EXCERPT_LIMIT = 2000
-
-
-def _trim_output(value: str) -> str:
-    if len(value) <= _OUTPUT_EXCERPT_LIMIT:
-        return value
-    return value[:_OUTPUT_EXCERPT_LIMIT]
+from app.workspace.command_policy import CommandPolicy
+from app.workspace.executor import execute_verification_command
+from app.workspace.worktree import WorkspaceCleanupResult, cleanup_worktree, prepare_worktree
 
 
-def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
-    recorder = TraceRecorder(traces_dir)
+def run_task_preview(task: TaskSpec, settings: Settings) -> RunState:
+    recorder = TraceRecorder(settings.traces_dir)
     run_id = f"preview-{uuid4().hex[:12]}"
+    repo_path = Path(task.repo_path)
+    workspace_path: Path | None = None
+
+    try:
+        workspace_path = prepare_worktree(
+            repo_path=repo_path,
+            workspace_root=settings.workspace_root,
+            run_id=run_id,
+            base_ref=task.base_ref,
+        )
+    except (subprocess.CalledProcessError, OSError) as exc:
+        trace_path = recorder.record(
+            TraceEvent(
+                run_id=run_id,
+                event_type="run.started",
+                message="Started task preview run",
+                payload={
+                    "task_id": task.task_id,
+                    "task_type": task.task_type,
+                    "status": "running",
+                    "summary": "Task preview started",
+                    "workspace_path": None,
+                },
+            )
+        )
+        failure_detail = str(exc)
+        if isinstance(exc, subprocess.CalledProcessError):
+            failure_detail = exc.stderr or exc.stdout or str(exc)
+        summary = f"Workspace setup failed: {failure_detail.strip()}"
+        trace_path = recorder.record(
+            TraceEvent(
+                run_id=run_id,
+                event_type="run.workspace.cleanup",
+                message="Recorded workspace cleanup decision",
+                payload={
+                    "workspace_path": None,
+                    "cleanup_attempted": False,
+                    "cleanup_succeeded": False,
+                    "cleanup_reason": "workspace not created",
+                },
+            )
+        )
+        trace_path = recorder.record(
+            TraceEvent(
+                run_id=run_id,
+                event_type="run.completed",
+                message="Completed task preview run",
+                payload={
+                    "task_id": task.task_id,
+                    "task_type": task.task_type,
+                    "status": "failed",
+                    "summary": summary,
+                    "workspace_path": None,
+                },
+            )
+        )
+        return RunState(
+            run_id=run_id,
+            task_id=task.task_id,
+            task_type=task.task_type,
+            status="failed",
+            current_step="summarize",
+            summary=summary,
+            trace_path=str(trace_path),
+            workspace_path=None,
+            verification=None,
+        )
 
     trace_path = recorder.record(
         TraceEvent(
@@ -32,10 +94,10 @@ def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
                 "task_type": task.task_type,
                 "status": "running",
                 "summary": "Task preview started",
+                "workspace_path": str(workspace_path),
             },
         )
     )
-
     trace_path = recorder.record(
         TraceEvent(
             run_id=run_id,
@@ -46,11 +108,17 @@ def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
                 "task_type": task.task_type,
                 "command_count": len(task.verification_commands),
                 "status": "running",
+                "workspace_path": str(workspace_path),
             },
         )
     )
 
     command_results: list[VerificationCommandResult] = []
+    policy = CommandPolicy(
+        allowed_commands=task.verification_commands,
+        allowed_root=workspace_path,
+        timeout_seconds=settings.verification_timeout_seconds,
+    )
 
     if not task.verification_commands:
         command_results.append(
@@ -61,36 +129,17 @@ def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
                 duration_ms=0,
                 stdout_excerpt="",
                 stderr_excerpt="no verification commands provided",
+                timed_out=False,
+                rejected=False,
+                cwd=str(workspace_path),
             )
         )
     else:
         for command in task.verification_commands:
-            started_at = time.perf_counter()
-            try:
-                completed_process = subprocess.run(
-                    command,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    cwd=task.repo_path,
-                )
-                exit_code = completed_process.returncode
-                stdout_excerpt = _trim_output(completed_process.stdout)
-                stderr_excerpt = _trim_output(completed_process.stderr)
-            except OSError as exc:
-                exit_code = -1
-                stdout_excerpt = ""
-                stderr_excerpt = str(exc)
-
-            duration_ms = int((time.perf_counter() - started_at) * 1000)
-            status = "passed" if exit_code == 0 else "failed"
-            command_result = VerificationCommandResult(
+            command_result = execute_verification_command(
                 command=command,
-                exit_code=exit_code,
-                status=status,
-                duration_ms=duration_ms,
-                stdout_excerpt=stdout_excerpt,
-                stderr_excerpt=stderr_excerpt,
+                cwd=workspace_path,
+                policy=policy,
             )
             command_results.append(command_result)
 
@@ -108,11 +157,14 @@ def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
                         "duration_ms": command_result.duration_ms,
                         "stdout_excerpt": command_result.stdout_excerpt,
                         "stderr_excerpt": command_result.stderr_excerpt,
+                        "timed_out": command_result.timed_out,
+                        "rejected": command_result.rejected,
+                        "cwd": command_result.cwd,
                     },
                 )
             )
 
-    failed_count = sum(1 for result in command_results if result.status == "failed")
+    failed_count = sum(1 for result in command_results if result.status != "passed")
     passed_count = len(command_results) - failed_count
     verification = VerificationResult(
         status="passed" if failed_count == 0 else "failed",
@@ -125,10 +177,35 @@ def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
     if not task.verification_commands:
         summary = "Verification failed: no verification commands provided"
     elif verification.status == "passed":
-        summary = f"Verification passed: {passed_count}/{len(command_results)} commands succeeded"
+        summary = (
+            "Verification passed: "
+            f"{verification.passed_count}/{len(command_results)} commands succeeded"
+        )
     else:
-        summary = f"Verification failed: {failed_count} of {len(command_results)} commands failed"
+        summary = (
+            "Verification failed: "
+            f"{verification.failed_count} of {len(command_results)} commands failed"
+        )
 
+    cleanup = WorkspaceCleanupResult(
+        workspace_path=str(workspace_path),
+        cleanup_attempted=False,
+        cleanup_succeeded=False,
+        cleanup_reason="workspace preserved",
+    )
+    if run_status == "completed" and settings.cleanup_success_workspace:
+        cleanup = cleanup_worktree(repo_path=repo_path, workspace_path=workspace_path)
+        if not cleanup.cleanup_succeeded:
+            summary = f"{summary}; workspace cleanup failed: {cleanup.cleanup_reason}"
+
+    trace_path = recorder.record(
+        TraceEvent(
+            run_id=run_id,
+            event_type="run.workspace.cleanup",
+            message="Recorded workspace cleanup decision",
+            payload=cleanup.model_dump(mode="json"),
+        )
+    )
     trace_path = recorder.record(
         TraceEvent(
             run_id=run_id,
@@ -139,6 +216,7 @@ def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
                 "task_type": task.task_type,
                 "status": run_status,
                 "summary": summary,
+                "workspace_path": str(workspace_path),
             },
         )
     )
@@ -151,5 +229,6 @@ def run_task_preview(task: TaskSpec, traces_dir: Path) -> RunState:
         current_step="summarize",
         summary=summary,
         trace_path=str(trace_path),
+        workspace_path=str(workspace_path),
         verification=verification,
     )

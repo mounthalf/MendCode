@@ -274,6 +274,136 @@ README 一开始仍使用 `Phase 0 Capabilities` 标题，但仓库已经具备 
 - 后续新增执行边界或工作区相关能力时，优先放在 `app/workspace/`，不要继续堆进 runner
 - 如果某个能力同时涉及策略判断和命令执行，默认拆成 policy 与 executor 两层，而不是写成一个大函数
 
+## 问题 9：新建 worktree 若只基于最近提交，可能缺失主工作区未提交但已确认的收敛改动，导致基线再次变脏
+
+- 时间：Phase 1B 开发前基线清理
+- 阶段：隔离 worktree 启动与基线恢复
+- 状态：已解决
+
+### 现象
+
+为执行 Phase 1B 计划新建隔离 worktree 后，`pytest -q` 和 `ruff check .` 立刻暴露出基线问题：
+
+- CLI 仍停留在较早版本，没有展示 verification 汇总字段
+- `tests/integration/test_cli.py` 仍包含环境敏感的 `pytest -q` 命令和旧 trace 契约
+- `tests/unit/test_runner.py` 仍有既有 lint 问题
+
+这说明新 worktree 虽然基于最新提交，但没有包含主工作区里尚未提交、却已经确认过的收敛改动。
+
+### 根因
+
+- `git worktree add` 只基于已提交历史创建工作区，不会自动带入主工作区的未提交改动
+- 当前阶段上一轮收敛结果还没有全部进入提交历史
+- 因此新 worktree 的“提交基线”与主工作区的“真实开发基线”发生了偏差
+
+### 解决方案
+
+- 先停止 Phase 1B 新功能开发，优先恢复新 worktree 基线
+- 将 CLI 汇总输出与对应测试收敛到当前 runner 契约
+- 将环境敏感的集成测试命令改为可控命令
+- 修复既有 lint 问题，并重新验证 `pytest -q` 与 `ruff check .`
+
+### 后续约束
+
+- 以后从主工作区切新 worktree 前，先确认关键收敛改动是否已经提交，避免把“未提交共识”丢在旧工作区
+- 如果必须从一个仍有未提交收敛改动的主工作区切新 worktree，进入开发前先做一次基线校准，不要直接开始新功能任务
+
+---
+
+## 问题 10：嵌套 worktree 下直接调用 `pytest`，可能命中外层主工作区的 editable install，导致测试加载到旧代码
+
+- 时间：Phase 1B / Task 1
+- 阶段：schema / settings 底座落地与验证
+- 状态：部分解决
+
+### 现象
+
+在 `/home/wxh/MendCode/.worktrees/...` 这样的嵌套 worktree 中执行：
+
+- `python -m pytest ...` 会加载当前 worktree 中的代码，测试通过
+- `pytest ...` 则可能加载外层主工作区 `/home/wxh/MendCode` 的 editable install，表现为测试仍然看到旧版 schema，形成“代码已改、测试仍像没改”的假象
+
+### 根因
+
+- 当前 Python 环境里存在指向外层主工作区的 editable install
+- `pytest` console entrypoint 与 `python -m pytest` 的导入路径优先级不同
+- 当 worktree 嵌套在主工作区目录下时，这个差异会被放大
+
+### 解决方案
+
+- 当前阶段先以 `python -m pytest ...` 作为 worktree 内的权威验证方式
+- 在 review 中显式区分“代码问题”和“入口脚本加载路径问题”，避免误判实现未生效
+- Task 2 的 implement / review / 修正阶段都已按这一策略执行，当前实践证明这条规避方式有效
+- Task 3 的 git worktree 单测同样延续该策略，当前没有再出现“实现已更新但测试命中旧包”的误判
+- Task 4 的 runner / CLI 接线验证继续沿用该方式，已经可以稳定支撑更大范围的 focused test 与整套 `pytest -q`
+
+### 后续约束
+
+- 后续在该 worktree 内执行 Python 测试时，优先使用 `python -m pytest`
+- 进入更大范围的实现前，可以评估是否要清理或重装 editable install，避免 `pytest` / `python -m pytest` 行为继续分叉
+
+---
+
+## 问题 11：没有 workspace 隔离时，verification 命令会直接对仓库工作目录产生副作用
+
+- 时间：Phase 1B command policy / worktree 落地
+- 阶段：runner 执行边界治理
+- 状态：已解决
+
+### 现象
+
+verification 命令原先直接在 `task.repo_path` 下执行，后续一旦引入补丁修改能力，真实仓库会直接暴露给任务运行副作用。
+
+### 根因
+
+- 初版 runner 只追求跑通验证链路，没有 workspace 抽象
+- 命令执行边界和 repo 工作目录耦合在一起
+
+### 解决方案
+
+- 为每次 run 创建独立 `.worktrees/preview-<id>/`
+- verification 默认在 worktree 中执行
+- trace 记录 `workspace_path` 与 cleanup 结果
+
+### 后续约束
+
+- 后续 `read_file` / `search_code` / `apply_patch` 都应优先围绕 `workspace_path`，而不是直接操作 `task.repo_path`
+
+---
+
+## 问题 12：嵌套 worktree 下直接调用 `mendcode`，可能命中外层主工作区的 editable install，导致 CLI 验证对错代码
+
+- 时间：Phase 1B / Task 5 收尾
+- 阶段：README 与 smoke 验证收敛
+- 状态：已解决
+
+### 现象
+
+在 `/home/wxh/MendCode/.worktrees/...` 这样的嵌套 worktree 中：
+
+- `python -m app.cli.main task run ...` 会加载当前 worktree 中的代码
+- 直接调用 `mendcode task run ...` 可能命中外层主工作区安装出来的 console script
+- 结果是 CLI 看似可运行，但验证的并不是当前分支代码
+
+### 根因
+
+- `mendcode` console script 来自已有 editable install
+- 嵌套 worktree 开发时，console script 的导入目标不一定指向当前 worktree
+- 因此“命令跑通”不等于“当前分支实现已被验证”
+
+### 解决方案
+
+- 在当前阶段把 `python -m app.cli.main ...` 作为 worktree 内 CLI 验证的权威入口
+- README 明确区分：
+  - 正常安装使用场景可继续使用 `mendcode ...`
+  - 嵌套 worktree 开发和收尾场景优先使用 `python -m app.cli.main ...`
+- smoke 用例同步收敛到当前 worktree 可控入口
+
+### 后续约束
+
+- 后续在嵌套 worktree 中做 CLI 验证、回归测试和收尾判断时，优先使用 `python -m app.cli.main ...`
+- 如果未来需要统一开发体验，应考虑在工程层面解决 editable install 与 worktree 的入口漂移，而不是继续人工记忆规避
+
 ---
 
 ## 5. 下一步维护建议

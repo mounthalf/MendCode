@@ -639,6 +639,11 @@ L3 长期记忆：
   - 先收口 command policy
   - 再接 worktree manager
   - runner 逐步退回到编排职责，不继续堆策略与工作区副作用
+- 开始下一阶段开发前，已先完成当前 worktree 的基线清理：
+  - 修复 CLI 汇总输出与 integration test 契约不一致的问题
+  - 将环境敏感的 `pytest -q` 测试命令收敛为可控命令
+  - 清理 `tests/unit/test_runner.py` 的既有 lint 问题
+  - 当前基线重新恢复为 `pytest -q` / `ruff check .` 全绿
 
 ### Phase 1：打通最小修复闭环
 
@@ -686,6 +691,47 @@ L3 长期记忆：
   3. `app/workspace/worktree.py`
   4. runner 接线与 trace 扩展
   5. 再进入 `read_file` / `search_code` / `apply_patch`
+- 当前已完成下一阶段的第一个落地任务：
+  - Task 1 已完成 schema / settings 底座扩展
+  - `TaskSpec` 已支持 `base_ref`
+  - `RunState` 已支持 `workspace_path`
+  - `VerificationCommandResult` 已支持 `timed_out` / `rejected` / `cwd`，且状态约束已收紧
+  - `Settings` / `ensure_data_directories()` 已支持 `workspace_root` 与基础执行配置
+- 当前已完成下一阶段的第二个落地任务：
+  - Task 2 已完成 `app/workspace/command_policy.py`
+  - Task 2 已完成 `app/workspace/executor.py`
+  - 命令 allowlist、`cwd` 边界、timeout、rejected、launch failure 都已具备结构化结果
+  - richer verification schema 已真正接到单命令执行结果上
+- 当前已完成下一阶段的第三个落地任务：
+  - Task 3 已完成 `app/workspace/worktree.py`
+  - worktree 准备、detached checkout、`base_ref` 和 cleanup 结果都已有稳定接口
+  - cleanup 成功 / 失败路径都已有真实 git 场景测试覆盖
+- 当前已完成下一阶段的第四个落地任务：
+  - Task 4 已将 runner 从“直接在 repo_path 执行”切换为“先准备 workspace，再经 executor 执行”
+  - `workspace_path`、cleanup 结果和 richer verification 事件已经真正写入 trace / CLI 汇总
+  - `task run` 已首次跑通完整的 workspace-aware 执行链
+  - workspace setup 失败与 cleanup 失败都已具备更可操作的 summary 暴露
+- 当前下一优先级已切换到 Task 5：
+  - 同步 README / 根方案文档 / 问题记录
+  - 跑完整验证集
+  - 确认当前 worktree 分支已经达到可收尾状态
+- Task 5 现已完成：
+  - README、开发方案、问题记录已与 command policy / worktree 实现保持同步
+  - 已完成完整验证：`python -m pytest -q`、`ruff check .` 均通过
+  - 当前 `phase-1b-command-policy-worktree` 已达到本地合并回 `main` 的收尾条件
+- 当前收尾原则也已固定：
+  - 先把 Phase 1B command policy / worktree 切片合回 `main`
+  - 合并后再进入下一阶段基础工具能力，不在本分支继续堆新功能
+
+补充当前收敛状态：
+
+- command policy 已落地：验证命令必须经过受控 executor，具备 timeout、rejected、timed_out 语义
+- worktree manager 已落地：`task run` 默认在 `.worktrees/preview-<id>/` 中执行 verification
+- runner 已从“直接执行命令”收敛为“编排 workspace、executor、trace 和 cleanup”
+- 当前 worktree 内的权威验证 / 运行方式已明确：
+  - 测试优先使用 `python -m pytest`
+  - CLI smoke 优先使用 `python -m app.cli.main ...`
+  - 嵌套 worktree 场景下，不再把外层 editable install 的 `pytest` / `mendcode` 入口当作收尾依据
 
 ### Phase 2：补足上下文工程
 

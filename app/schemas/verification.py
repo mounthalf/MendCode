@@ -2,7 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-VerificationStatus = Literal["passed", "failed"]
+VerificationCommandStatus = Literal["passed", "failed", "timed_out", "rejected"]
+VerificationSummaryStatus = Literal["passed", "failed"]
 
 
 class VerificationCommandResult(BaseModel):
@@ -10,23 +11,51 @@ class VerificationCommandResult(BaseModel):
 
     command: str
     exit_code: int
-    status: VerificationStatus
+    status: VerificationCommandStatus
     duration_ms: int
     stdout_excerpt: str = ""
     stderr_excerpt: str = ""
+    timed_out: bool = False
+    rejected: bool = False
+    cwd: str
 
     @model_validator(mode="after")
-    def validate_exit_code_matches_status(self) -> "VerificationCommandResult":
-        expected_status: VerificationStatus = "passed" if self.exit_code == 0 else "failed"
-        if self.status != expected_status:
-            raise ValueError("status must match exit_code")
+    def validate_status_flags(self) -> "VerificationCommandResult":
+        if self.status == "passed":
+            if self.exit_code != 0:
+                raise ValueError("passed status requires exit_code 0")
+            if self.timed_out:
+                raise ValueError("passed status requires timed_out=False")
+            if self.rejected:
+                raise ValueError("passed status requires rejected=False")
+        elif self.status == "failed":
+            if self.exit_code == 0:
+                raise ValueError("failed status requires non-zero exit_code or launch failure")
+            if self.timed_out:
+                raise ValueError("failed status requires timed_out=False")
+            if self.rejected:
+                raise ValueError("failed status requires rejected=False")
+        elif self.status == "timed_out":
+            if self.exit_code != -1:
+                raise ValueError("timed_out status requires exit_code -1")
+            if not self.timed_out:
+                raise ValueError("timed_out status requires timed_out=True")
+            if self.rejected:
+                raise ValueError("timed_out status requires rejected=False")
+        elif self.status == "rejected":
+            if self.exit_code != -1:
+                raise ValueError("rejected status requires exit_code -1")
+            if not self.rejected:
+                raise ValueError("rejected status requires rejected=True")
+            if self.timed_out:
+                raise ValueError("rejected status requires timed_out=False")
         return self
 
 
 class VerificationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: VerificationStatus
+    status: VerificationSummaryStatus
     command_results: list[VerificationCommandResult] = Field(default_factory=list)
     passed_count: int
     failed_count: int
@@ -41,7 +70,7 @@ class VerificationResult(BaseModel):
         if self.failed_count != failed_results:
             raise ValueError("failed_count must match command_results")
 
-        expected_status: VerificationStatus = "passed" if failed_results == 0 else "failed"
+        expected_status: VerificationSummaryStatus = "passed" if failed_results == 0 else "failed"
         if self.status != expected_status:
             raise ValueError("status must match command_results")
 

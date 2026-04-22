@@ -16,4 +16,5 @@ class RunState(BaseModel):
     current_step: Literal["bootstrap", "verify", "summarize"]
     summary: str
     trace_path: str
+    workspace_path: str | None = None
     verification: VerificationResult | None = None

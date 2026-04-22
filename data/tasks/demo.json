@@ -7,7 +7,7 @@
     "log": "pytest failed: test_example"
   },
   "verification_commands": [
-    "pytest -q"
+    "python -m pytest -q"
   ],
   "allowed_tools": [
     "read_file",
