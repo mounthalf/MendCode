@@ -17,20 +17,38 @@ class VerificationCommandResult(BaseModel):
     stderr_excerpt: str = ""
     timed_out: bool = False
     rejected: bool = False
-    cwd: str | None = None
+    cwd: str
 
     @model_validator(mode="after")
     def validate_status_flags(self) -> "VerificationCommandResult":
-        if self.status == "passed" and self.exit_code != 0:
-            raise ValueError("passed status requires exit_code 0")
-        if self.status == "failed" and self.exit_code == 0:
-            raise ValueError("failed status requires non-zero exit_code")
-        if self.status == "timed_out" and not self.timed_out:
-            raise ValueError("timed_out status requires timed_out=True")
-        if self.status == "rejected" and not self.rejected:
-            raise ValueError("rejected status requires rejected=True")
-        if self.status in {"timed_out", "rejected"} and self.exit_code != -1:
-            raise ValueError("timed_out and rejected statuses require exit_code -1")
+        if self.status == "passed":
+            if self.exit_code != 0:
+                raise ValueError("passed status requires exit_code 0")
+            if self.timed_out:
+                raise ValueError("passed status requires timed_out=False")
+            if self.rejected:
+                raise ValueError("passed status requires rejected=False")
+        elif self.status == "failed":
+            if self.exit_code in {0, -1}:
+                raise ValueError("failed status requires executed non-zero exit_code")
+            if self.timed_out:
+                raise ValueError("failed status requires timed_out=False")
+            if self.rejected:
+                raise ValueError("failed status requires rejected=False")
+        elif self.status == "timed_out":
+            if self.exit_code != -1:
+                raise ValueError("timed_out status requires exit_code -1")
+            if not self.timed_out:
+                raise ValueError("timed_out status requires timed_out=True")
+            if self.rejected:
+                raise ValueError("timed_out status requires rejected=False")
+        elif self.status == "rejected":
+            if self.exit_code != -1:
+                raise ValueError("rejected status requires exit_code -1")
+            if not self.rejected:
+                raise ValueError("rejected status requires rejected=True")
+            if self.timed_out:
+                raise ValueError("rejected status requires timed_out=False")
         return self
 
 

@@ -17,6 +17,7 @@ def test_verification_result_serializes_expected_fields():
                 duration_ms=120,
                 stdout_excerpt="2 passed",
                 stderr_excerpt="",
+                cwd="/tmp/worktree",
             ),
             VerificationCommandResult(
                 command="python -m bad.module",
@@ -25,6 +26,7 @@ def test_verification_result_serializes_expected_fields():
                 duration_ms=80,
                 stdout_excerpt="",
                 stderr_excerpt="ModuleNotFoundError",
+                cwd="/tmp/worktree",
             ),
         ],
     )
@@ -41,7 +43,7 @@ def test_verification_result_serializes_expected_fields():
                 "stderr_excerpt": "",
                 "timed_out": False,
                 "rejected": False,
-                "cwd": None,
+                "cwd": "/tmp/worktree",
             },
             {
                 "command": "python -m bad.module",
@@ -52,7 +54,7 @@ def test_verification_result_serializes_expected_fields():
                 "stderr_excerpt": "ModuleNotFoundError",
                 "timed_out": False,
                 "rejected": False,
-                "cwd": None,
+                "cwd": "/tmp/worktree",
             },
         ],
         "passed_count": 1,
@@ -96,6 +98,7 @@ def test_verification_result_rejects_inconsistent_aggregate():
                     duration_ms=120,
                     stdout_excerpt="2 passed",
                     stderr_excerpt="",
+                    cwd="/tmp/worktree",
                 ),
                 VerificationCommandResult(
                     command="python -m bad.module",
@@ -104,6 +107,7 @@ def test_verification_result_rejects_inconsistent_aggregate():
                     duration_ms=80,
                     stdout_excerpt="",
                     stderr_excerpt="ModuleNotFoundError",
+                    cwd="/tmp/worktree",
                 ),
             ],
         )
@@ -118,6 +122,7 @@ def test_verification_models_forbid_extra_fields():
             duration_ms=120,
             stdout_excerpt="2 passed",
             stderr_excerpt="",
+            cwd="/tmp/worktree",
             extra_field=True,
         )
 
@@ -140,6 +145,7 @@ def test_verification_command_result_rejects_zero_exit_code_with_failed_status()
             duration_ms=120,
             stdout_excerpt="2 passed",
             stderr_excerpt="",
+            cwd="/tmp/worktree",
         )
 
 
@@ -152,6 +158,7 @@ def test_verification_command_result_rejects_nonzero_exit_code_with_passed_statu
             duration_ms=80,
             stdout_excerpt="",
             stderr_excerpt="ModuleNotFoundError",
+            cwd="/tmp/worktree",
         )
 
 
@@ -205,3 +212,56 @@ def test_verification_command_result_supports_timeout_and_rejection_statuses():
         "rejected": True,
         "cwd": "/tmp/worktree",
     }
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {
+            "command": "pytest -q",
+            "exit_code": 0,
+            "status": "passed",
+            "duration_ms": 120,
+            "stdout_excerpt": "",
+            "stderr_excerpt": "",
+            "timed_out": False,
+            "rejected": True,
+            "cwd": "/tmp/worktree",
+        },
+        {
+            "command": "pytest -q",
+            "exit_code": 1,
+            "status": "failed",
+            "duration_ms": 120,
+            "stdout_excerpt": "",
+            "stderr_excerpt": "",
+            "timed_out": True,
+            "rejected": False,
+            "cwd": "/tmp/worktree",
+        },
+        {
+            "command": "pytest -q",
+            "exit_code": -1,
+            "status": "timed_out",
+            "duration_ms": 120,
+            "stdout_excerpt": "",
+            "stderr_excerpt": "",
+            "timed_out": True,
+            "rejected": True,
+            "cwd": "/tmp/worktree",
+        },
+        {
+            "command": "pytest -q",
+            "exit_code": 0,
+            "status": "passed",
+            "duration_ms": 120,
+            "stdout_excerpt": "",
+            "stderr_excerpt": "",
+            "timed_out": False,
+            "rejected": False,
+        },
+    ],
+)
+def test_verification_command_result_rejects_invalid_status_flag_combinations(kwargs):
+    with pytest.raises(ValidationError):
+        VerificationCommandResult(**kwargs)
