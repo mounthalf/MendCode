@@ -90,6 +90,11 @@ def read_file(
     content = "".join(content_parts)
     end = total_lines if requested_end is None else requested_end
 
+    if start > total_lines:
+        return _reject_read_file(relative_path, workspace_path, "start_line exceeds file length")
+    if requested_end is not None and requested_end > total_lines:
+        return _reject_read_file(relative_path, workspace_path, "end_line exceeds file length")
+
     return ToolResult(
         tool_name="read_file",
         status="passed",

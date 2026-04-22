@@ -139,3 +139,33 @@ def test_read_file_rejects_negative_max_chars(tmp_path: Path) -> None:
 
     assert result.status == "rejected"
     assert result.error_message == "max_chars must be greater than or equal to 0"
+
+
+def test_read_file_rejects_start_line_beyond_file_length(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+
+    result = read_file(
+        workspace_path=workspace_path,
+        relative_path="notes.txt",
+        start_line=3,
+    )
+
+    assert result.status == "rejected"
+    assert result.error_message == "start_line exceeds file length"
+
+
+def test_read_file_rejects_end_line_beyond_file_length(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+
+    result = read_file(
+        workspace_path=workspace_path,
+        relative_path="notes.txt",
+        end_line=3,
+    )
+
+    assert result.status == "rejected"
+    assert result.error_message == "end_line exceeds file length"
