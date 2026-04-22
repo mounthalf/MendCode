@@ -8,10 +8,23 @@ from app.workspace.command_policy import CommandPolicy
 _OUTPUT_EXCERPT_LIMIT = 2000
 
 
-def _trim_output(value: str) -> str:
-    if len(value) <= _OUTPUT_EXCERPT_LIMIT:
-        return value
-    return value[:_OUTPUT_EXCERPT_LIMIT]
+def _coerce_output_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def _trim_output(value: str | bytes | None) -> str:
+    text = _coerce_output_text(value)
+    if len(text) <= _OUTPUT_EXCERPT_LIMIT:
+        return text
+    return text[:_OUTPUT_EXCERPT_LIMIT]
+
+
+def _extract_timeout_output(exc: subprocess.TimeoutExpired) -> tuple[str, str]:
+    return _trim_output(exc.output), _trim_output(exc.stderr)
 
 
 def execute_verification_command(
@@ -43,15 +56,17 @@ def execute_verification_command(
             cwd=cwd,
             timeout=policy.timeout_seconds,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         duration_ms = int((time.perf_counter() - started_at) * 1000)
+        stdout_excerpt, stderr_excerpt = _extract_timeout_output(exc)
+        timeout_message = f"command timed out after {policy.timeout_seconds} seconds"
         return VerificationCommandResult(
             command=command,
             exit_code=-1,
             status="timed_out",
             duration_ms=duration_ms,
-            stdout_excerpt="",
-            stderr_excerpt=f"command timed out after {policy.timeout_seconds} seconds",
+            stdout_excerpt=stdout_excerpt,
+            stderr_excerpt=stderr_excerpt or timeout_message,
             timed_out=True,
             rejected=False,
             cwd=str(cwd),

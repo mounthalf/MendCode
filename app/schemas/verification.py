@@ -29,8 +29,8 @@ class VerificationCommandResult(BaseModel):
             if self.rejected:
                 raise ValueError("passed status requires rejected=False")
         elif self.status == "failed":
-            if self.exit_code in {0, -1}:
-                raise ValueError("failed status requires executed non-zero exit_code")
+            if self.exit_code == 0:
+                raise ValueError("failed status requires non-zero exit_code or launch failure")
             if self.timed_out:
                 raise ValueError("failed status requires timed_out=False")
             if self.rejected:

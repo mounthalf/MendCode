@@ -214,6 +214,25 @@ def test_verification_command_result_supports_timeout_and_rejection_statuses():
     }
 
 
+def test_verification_command_result_accepts_failed_exit_code_negative_one():
+    result = VerificationCommandResult(
+        command="python -m launcher",
+        exit_code=-1,
+        status="failed",
+        duration_ms=12,
+        stdout_excerpt="",
+        stderr_excerpt="launch failed",
+        timed_out=False,
+        rejected=False,
+        cwd="/tmp/worktree",
+    )
+
+    assert result.status == "failed"
+    assert result.exit_code == -1
+    assert result.timed_out is False
+    assert result.rejected is False
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [
