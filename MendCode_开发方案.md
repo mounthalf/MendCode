@@ -706,10 +706,15 @@ L3 长期记忆：
   - Task 3 已完成 `app/workspace/worktree.py`
   - worktree 准备、detached checkout、`base_ref` 和 cleanup 结果都已有稳定接口
   - cleanup 成功 / 失败路径都已有真实 git 场景测试覆盖
-- 当前下一优先级已切换到 Task 4：
-  - 将 runner 从“直接在 repo_path 执行”切换为“先准备 workspace，再经 executor 执行”
-  - 将 `workspace_path`、cleanup 结果和 richer verification 事件真正写入 trace / CLI 汇总
-  - 让 `task run` 第一次跑通完整的 workspace-aware 执行链
+- 当前已完成下一阶段的第四个落地任务：
+  - Task 4 已将 runner 从“直接在 repo_path 执行”切换为“先准备 workspace，再经 executor 执行”
+  - `workspace_path`、cleanup 结果和 richer verification 事件已经真正写入 trace / CLI 汇总
+  - `task run` 已首次跑通完整的 workspace-aware 执行链
+  - workspace setup 失败与 cleanup 失败都已具备更可操作的 summary 暴露
+- 当前下一优先级已切换到 Task 5：
+  - 同步 README / 根方案文档 / 问题记录
+  - 跑完整验证集
+  - 确认当前 worktree 分支已经达到可收尾状态
 
 ### Phase 2：补足上下文工程
 

@@ -337,6 +337,7 @@ README 一开始仍使用 `Phase 0 Capabilities` 标题，但仓库已经具备 
 - 在 review 中显式区分“代码问题”和“入口脚本加载路径问题”，避免误判实现未生效
 - Task 2 的 implement / review / 修正阶段都已按这一策略执行，当前实践证明这条规避方式有效
 - Task 3 的 git worktree 单测同样延续该策略，当前没有再出现“实现已更新但测试命中旧包”的误判
+- Task 4 的 runner / CLI 接线验证继续沿用该方式，已经可以稳定支撑更大范围的 focused test 与整套 `pytest -q`
 
 ### 后续约束
 
