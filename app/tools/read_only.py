@@ -34,7 +34,11 @@ def read_file(
             "start_line cannot be greater than end_line",
         )
     if max_chars is not None and max_chars < 0:
-        return _reject_read_file(relative_path, workspace_path, "max_chars must be greater than or equal to 0")
+        return _reject_read_file(
+            relative_path,
+            workspace_path,
+            "max_chars must be greater than or equal to 0",
+        )
 
     try:
         target = resolve_workspace_file(workspace_path, relative_path)
@@ -195,7 +199,12 @@ def search_code(
         return _failed_search_code(workspace_path, query, glob, str(exc))
 
     if completed.returncode not in {0, 1}:
-        return _failed_search_code(workspace_path, query, glob, f"rg exited with code {completed.returncode}")
+        return _failed_search_code(
+            workspace_path,
+            query,
+            glob,
+            f"rg exited with code {completed.returncode}",
+        )
 
     matches: list[dict[str, object]] = []
     for line in completed.stdout.splitlines():

@@ -1,5 +1,5 @@
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 from app.tools.read_only import read_file, search_code
 
@@ -277,7 +277,12 @@ def test_search_code_applies_glob_filter(tmp_path: Path, monkeypatch) -> None:
     result = search_code(workspace_path=workspace_path, query="alpha", glob="*.py")
 
     assert result.status == "passed"
-    assert calls == [(["rg", "--fixed-strings", "--line-number", "--no-heading", "--glob", "*.py", "alpha"], workspace_path)]
+    assert calls == [
+        (
+            ["rg", "--fixed-strings", "--line-number", "--no-heading", "--glob", "*.py", "alpha"],
+            workspace_path,
+        )
+    ]
     assert result.payload == {
         "query": "alpha",
         "glob": "*.py",

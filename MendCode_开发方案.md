@@ -728,22 +728,25 @@ L3 长期记忆：
   - 仓库中被误纳入版本管理的 Python 字节码文件已清理
   - README 的重复 capability 描述已去重，避免合并后文案继续漂移
 - 当前下一开发切片已收敛为基础工具第一刀：
-  - 只做 `read_file` 与 `search_code`
-  - 暂不把 `apply_patch` 混入这一轮
+  - 先做 `read_file` 与 `search_code`
+  - 再补最小 `apply_patch`
   - 暂不接 orchestrator 自动调用
   - 先冻结工具层结果契约、路径边界和测试基线，再进入下一刀
 - 当前这一步已经完成实现与验证：
   - `app/tools/schemas.py` 已统一 `ToolResult` 契约，明确 `passed / failed / rejected` 语义和 `workspace_path`
   - `app/tools/guard.py` 已完成 workspace 路径边界校验，拒绝越界、缺失路径和目录路径
   - `app/tools/read_only.py` 已完成 `read_file` 与 `search_code`
+  - `app/tools/patch.py` 已完成最小 `apply_patch`
   - `read_file` 已支持行范围、字符截断、空文件返回和越界参数拒绝
   - `search_code` 已固定为字面量搜索，支持 `glob` 过滤、结果裁剪、0 匹配成功返回和非法参数拒绝
-  - 当前工具层仍然保持“只读、不改代码、不接 orchestrator 自动链路”的收敛边界
+  - `apply_patch` 当前只支持 `workspace_path` 内单文件的精确文本替换，不做通用 unified diff 解析
+  - 默认只允许单处命中替换；多处命中必须显式 `replace_all=True`
+  - 当前工具层仍然保持“不接 orchestrator 自动链路”的收敛边界
 - 当前切片的最新验证结果：
-  - `python -m pytest tests/unit/test_tool_schemas.py tests/unit/test_tool_guard.py tests/unit/test_read_only_tools.py -v` 通过
-  - `python -m pytest -v` 全量通过，当前 worktree 基线稳定
+  - `python -m pytest tests/unit/test_tool_schemas.py tests/unit/test_tool_guard.py tests/unit/test_read_only_tools.py tests/unit/test_patch_tools.py -v` 通过
+  - 当前 `apply_patch` 的核心行为已补齐单测：单次替换、空 `old_text` 拒绝、目标缺失拒绝、多处命中默认拒绝、`replace_all=True` 全量替换
 - 因此下一步顺序应继续保持简单：
-  - 先补 `apply_patch`
+  - 先把 `apply_patch` 保持在当前最小面，不继续扩成通用 diff 引擎
   - 再决定是否把工具层接入 orchestrator 的最小调用闭环
   - 暂不提前扩散到 repo map、日志蒸馏或多工具编排
 
@@ -953,9 +956,8 @@ L3 长期记忆：
 - 已完成：5，也就是最小 orchestrator runner 与 `task run`
 - 已完成：6，也就是 `run_verification`
 - 已完成：7，也就是 worktree manager / workspace 隔离
-- 已完成：8 的第一刀，也就是 `read_file` / `search_code`
+- 已完成：8 的当前最小工具闭环，也就是 `read_file` / `search_code` / 最小 `apply_patch`
 - 当前阶段未完成的主线收口为：
-  - 8 的剩余部分 `apply_patch`
   - 工具层与 orchestrator 的最小集成
   - demo 任务与端到端链路继续补强
 - 当前已经完成的工程收敛：
@@ -963,8 +965,9 @@ L3 长期记忆：
   - 不把 command policy 和 worktree 继续堆进 runner
   - 在 `app/workspace/` 下落 `command_policy.py`、`executor.py`、`worktree.py`
   - 先完成受控执行，再切换到 worktree 执行
-  - 只读工具优先围绕 `workspace_path` 收口结果契约和安全边界
-- 之后依次推进：8 的 `apply_patch`，再评估最小工具调用闭环
+  - 工具层统一围绕 `workspace_path` 收口结果契约和安全边界
+  - `apply_patch` 先固定为“单文件精确文本替换”而不是通用 diff 引擎
+- 之后依次推进：最小工具调用闭环，再评估是否扩 `apply_patch` 能力面
 
 当前对 `run_verification` 的收敛策略：
 
@@ -975,9 +978,9 @@ L3 长期记忆：
 - 当前 CLI 已显示 verification 汇总结果，并在失败时暴露首条失败命令
 - command policy、timeout 语义和 worktree 隔离已落地，不再属于待设计项
 - 当前下一阶段的重点已经转为“工具层最小闭环”：
-  - 在只读工具稳定的前提下补 `apply_patch`
-  - 保持 `ToolResult` / workspace 边界不漂移
-  - 等工具层契约稳定后，再把 orchestrator 接到最小工具调用链
+  - 当前 `read_file` / `search_code` / 最小 `apply_patch` 已经落地
+  - 继续保持 `ToolResult` / workspace 边界不漂移
+  - 下一刀直接评估把 orchestrator 接到最小工具调用链
 
 ---
 
