@@ -1,0 +1,80 @@
+from pathlib import Path
+
+from app.tools.read_only import read_file
+
+
+def test_read_file_returns_full_content(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    target = workspace_path / "notes.txt"
+    target.write_text("alpha\nbeta\n", encoding="utf-8")
+
+    result = read_file(workspace_path=workspace_path, relative_path="notes.txt")
+
+    assert result.status == "passed"
+    assert result.model_dump() == {
+        "tool_name": "read_file",
+        "status": "passed",
+        "summary": "Read notes.txt",
+        "payload": {
+            "relative_path": "notes.txt",
+            "start_line": 1,
+            "end_line": 2,
+            "total_lines": 2,
+            "content": "alpha\nbeta\n",
+            "truncated": False,
+        },
+        "error_message": None,
+        "workspace_path": str(workspace_path),
+    }
+
+
+def test_read_file_returns_requested_line_range(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    target = workspace_path / "notes.txt"
+    target.write_text("a\nb\nc\nd\n", encoding="utf-8")
+
+    result = read_file(
+        workspace_path=workspace_path,
+        relative_path="notes.txt",
+        start_line=2,
+        end_line=3,
+    )
+
+    assert result.status == "passed"
+    assert result.payload == {
+        "relative_path": "notes.txt",
+        "start_line": 2,
+        "end_line": 3,
+        "total_lines": 4,
+        "content": "b\nc\n",
+        "truncated": False,
+    }
+
+
+def test_read_file_truncates_large_content(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    target = workspace_path / "notes.txt"
+    target.write_text("abcdef", encoding="utf-8")
+
+    result = read_file(
+        workspace_path=workspace_path,
+        relative_path="notes.txt",
+        max_chars=3,
+    )
+
+    assert result.status == "passed"
+    assert result.payload["content"] == "abc"
+    assert result.payload["truncated"] is True
+
+
+def test_read_file_rejects_missing_path(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+
+    result = read_file(workspace_path=workspace_path, relative_path="missing.txt")
+
+    assert result.status == "rejected"
+    assert result.error_message == "path does not exist"
