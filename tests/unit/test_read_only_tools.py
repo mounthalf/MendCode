@@ -226,6 +226,22 @@ def test_search_code_rejects_empty_query(tmp_path: Path) -> None:
     assert result.error_message == "query must not be empty"
 
 
+def test_search_code_rejects_empty_query_preserves_glob(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+
+    result = search_code(workspace_path=workspace_path, query="", glob="*.py")
+
+    assert result.status == "rejected"
+    assert result.payload == {
+        "query": "",
+        "glob": "*.py",
+        "total_matches": 0,
+        "matches": [],
+    }
+    assert result.error_message == "query must not be empty"
+
+
 def test_search_code_applies_glob_filter(tmp_path: Path, monkeypatch) -> None:
     workspace_path = tmp_path / "workspace"
     workspace_path.mkdir()

@@ -130,12 +130,17 @@ def read_file(
     )
 
 
-def _reject_search_code(workspace_path: Path, query: str, message: str) -> ToolResult:
+def _reject_search_code(
+    workspace_path: Path,
+    query: str,
+    glob: str | None,
+    message: str,
+) -> ToolResult:
     return ToolResult(
         tool_name="search_code",
         status="rejected",
         summary="Unable to search code",
-        payload={"query": query, "glob": None, "total_matches": 0, "matches": []},
+        payload={"query": query, "glob": glob, "total_matches": 0, "matches": []},
         error_message=message,
         workspace_path=str(workspace_path),
     )
@@ -164,7 +169,7 @@ def search_code(
     max_results: int | None = None,
 ) -> ToolResult:
     if not query.strip():
-        return _reject_search_code(workspace_path, query, "query must not be empty")
+        return _reject_search_code(workspace_path, query, glob, "query must not be empty")
 
     command = ["rg", "--line-number", "--no-heading"]
     if glob is not None:
