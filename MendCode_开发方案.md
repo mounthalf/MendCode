@@ -702,10 +702,14 @@ L3 长期记忆：
   - Task 2 已完成 `app/workspace/executor.py`
   - 命令 allowlist、`cwd` 边界、timeout、rejected、launch failure 都已具备结构化结果
   - richer verification schema 已真正接到单命令执行结果上
-- 当前下一优先级已切换到 Task 3：
-  - 实现 `app/workspace/worktree.py`
-  - 让独立工作区准备与 cleanup 结果具备稳定接口
-  - 为后续 runner 接线准备最小 worktree 管理边界
+- 当前已完成下一阶段的第三个落地任务：
+  - Task 3 已完成 `app/workspace/worktree.py`
+  - worktree 准备、detached checkout、`base_ref` 和 cleanup 结果都已有稳定接口
+  - cleanup 成功 / 失败路径都已有真实 git 场景测试覆盖
+- 当前下一优先级已切换到 Task 4：
+  - 将 runner 从“直接在 repo_path 执行”切换为“先准备 workspace，再经 executor 执行”
+  - 将 `workspace_path`、cleanup 结果和 richer verification 事件真正写入 trace / CLI 汇总
+  - 让 `task run` 第一次跑通完整的 workspace-aware 执行链
 
 ### Phase 2：补足上下文工程
 
