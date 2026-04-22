@@ -36,8 +36,33 @@ def test_run_state_serializes_expected_fields():
         "summary": "Task preview completed",
         "trace_path": "/tmp/demo.jsonl",
         "workspace_path": None,
+        "selected_files": [],
+        "applied_patch": False,
+        "tool_results": [],
         "verification": None,
     }
+
+
+def test_run_state_accepts_fixed_flow_fields():
+    state = RunState(
+        run_id="preview-123",
+        task_id="demo-ci-001",
+        task_type="ci_fix",
+        status="running",
+        current_step="locate",
+        summary="Locating target file",
+        trace_path="/tmp/trace.jsonl",
+        workspace_path="/tmp/workspace",
+        selected_files=["target.txt"],
+        applied_patch=False,
+        tool_results=[{"tool_name": "search_code", "status": "passed"}],
+        verification=None,
+    )
+
+    assert state.current_step == "locate"
+    assert state.selected_files == ["target.txt"]
+    assert state.applied_patch is False
+    assert state.tool_results == [{"tool_name": "search_code", "status": "passed"}]
 
 
 def test_run_state_includes_verification_result():
@@ -73,6 +98,21 @@ def test_run_state_accepts_verify_current_step():
     )
 
     assert state.current_step == "verify"
+
+
+def test_run_state_rejects_unknown_step_name():
+    with pytest.raises(ValidationError) as excinfo:
+        RunState(
+            run_id="preview-123",
+            task_id="demo-ci-001",
+            task_type="ci_fix",
+            status="running",
+            current_step="plan",
+            summary="Bad step",
+            trace_path="/tmp/trace.jsonl",
+        )
+
+    assert "current_step" in str(excinfo.value)
 
 
 def test_run_state_rejects_unknown_fields():
