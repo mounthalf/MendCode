@@ -31,8 +31,20 @@ def init_git_repo(tmp_path: Path) -> Path:
         text=True,
     )
     (repo_path / "repo_only.txt").write_text("repo-relative", encoding="utf-8")
-    subprocess.run(["git", "add", "repo_only.txt"], cwd=repo_path, check=True, capture_output=True, text=True)
-    subprocess.run(["git", "commit", "-m", "init"], cwd=repo_path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "add", "repo_only.txt"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     return repo_path
 
 
