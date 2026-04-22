@@ -114,3 +114,19 @@ def test_run_state_rejects_invalid_enum_values(field, value):
         RunState(**kwargs)
 
     assert field in str(excinfo.value)
+
+
+def test_run_state_accepts_workspace_path():
+    state = RunState(
+        run_id="preview-123456789abc",
+        task_id="demo-ci-001",
+        task_type="ci_fix",
+        status="completed",
+        current_step="summarize",
+        summary="Verification passed",
+        trace_path="/tmp/trace.jsonl",
+        workspace_path="/tmp/worktree",
+        verification=None,
+    )
+
+    assert state.workspace_path == "/tmp/worktree"

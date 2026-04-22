@@ -2,7 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-VerificationStatus = Literal["passed", "failed"]
+VerificationCommandStatus = Literal["passed", "failed", "timed_out", "rejected"]
+VerificationSummaryStatus = Literal["passed", "failed"]
 
 
 class VerificationCommandResult(BaseModel):
@@ -10,23 +11,33 @@ class VerificationCommandResult(BaseModel):
 
     command: str
     exit_code: int
-    status: VerificationStatus
+    status: VerificationCommandStatus
     duration_ms: int
     stdout_excerpt: str = ""
     stderr_excerpt: str = ""
+    timed_out: bool = Field(default=False, exclude=True)
+    rejected: bool = Field(default=False, exclude=True)
+    cwd: str | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
-    def validate_exit_code_matches_status(self) -> "VerificationCommandResult":
-        expected_status: VerificationStatus = "passed" if self.exit_code == 0 else "failed"
-        if self.status != expected_status:
-            raise ValueError("status must match exit_code")
+    def validate_status_flags(self) -> "VerificationCommandResult":
+        if self.status == "passed" and self.exit_code != 0:
+            raise ValueError("passed status requires exit_code 0")
+        if self.status == "failed" and self.exit_code == 0:
+            raise ValueError("failed status requires non-zero exit_code")
+        if self.status == "timed_out" and not self.timed_out:
+            raise ValueError("timed_out status requires timed_out=True")
+        if self.status == "rejected" and not self.rejected:
+            raise ValueError("rejected status requires rejected=True")
+        if self.status in {"timed_out", "rejected"} and self.exit_code != -1:
+            raise ValueError("timed_out and rejected statuses require exit_code -1")
         return self
 
 
 class VerificationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: VerificationStatus
+    status: VerificationSummaryStatus
     command_results: list[VerificationCommandResult] = Field(default_factory=list)
     passed_count: int
     failed_count: int
@@ -41,7 +52,7 @@ class VerificationResult(BaseModel):
         if self.failed_count != failed_results:
             raise ValueError("failed_count must match command_results")
 
-        expected_status: VerificationStatus = "passed" if failed_results == 0 else "failed"
+        expected_status: VerificationSummaryStatus = "passed" if failed_results == 0 else "failed"
         if self.status != expected_status:
             raise ValueError("status must match command_results")
 

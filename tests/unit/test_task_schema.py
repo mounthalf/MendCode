@@ -76,6 +76,21 @@ def test_task_spec_defaults_optional_fields_when_omitted(tmp_path):
     assert task.metadata == {}
 
 
+def test_task_spec_defaults_base_ref_to_none(tmp_path):
+    payload = {
+        "task_id": "default-base-ref-001",
+        "task_type": "ci_fix",
+        "title": "Defaults base_ref",
+        "repo_path": str(tmp_path),
+        "entry_artifacts": {"log": "ok"},
+        "verification_commands": ["pytest -q"],
+    }
+
+    task = TaskSpec.model_validate(payload)
+
+    assert task.base_ref is None
+
+
 def test_load_task_spec_from_fixture():
     fixture_path = Path(__file__).resolve().parents[2] / "data" / "tasks" / "demo.json"
     task = load_task_spec(fixture_path)

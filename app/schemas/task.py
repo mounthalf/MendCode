@@ -14,6 +14,7 @@ class TaskSpec(BaseModel):
     task_type: TaskType
     title: str
     repo_path: str
+    base_ref: str | None = None
     entry_artifacts: dict[str, Any]
     verification_commands: list[str]
     allowed_tools: list[str] = Field(default_factory=list)

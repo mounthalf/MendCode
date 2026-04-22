@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.task import TaskType
 from app.schemas.verification import VerificationResult
@@ -16,4 +16,5 @@ class RunState(BaseModel):
     current_step: Literal["bootstrap", "verify", "summarize"]
     summary: str
     trace_path: str
+    workspace_path: str | None = Field(default=None, exclude=True)
     verification: VerificationResult | None = None

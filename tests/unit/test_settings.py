@@ -34,5 +34,26 @@ def test_ensure_data_directories_creates_missing_directories(monkeypatch, tmp_pa
         "data_dir": tmp_path / "data",
         "tasks_dir": tmp_path / "data" / "tasks",
         "traces_dir": tmp_path / "data" / "traces",
+        "workspace_root": tmp_path / ".worktrees",
     }
     assert all(path.exists() for path in created.values())
+
+
+def test_settings_exposes_workspace_configuration(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+
+    settings = get_settings()
+
+    assert settings.workspace_root == tmp_path / ".worktrees"
+    assert settings.verification_timeout_seconds == 60
+    assert settings.cleanup_success_workspace is False
+
+
+def test_ensure_data_directories_creates_workspace_root(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    settings = get_settings()
+
+    created = ensure_data_directories(settings)
+
+    assert created["workspace_root"] == tmp_path / ".worktrees"
+    assert created["workspace_root"].exists()
