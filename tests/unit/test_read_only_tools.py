@@ -1,6 +1,7 @@
 from pathlib import Path
+import subprocess
 
-from app.tools.read_only import read_file
+from app.tools.read_only import read_file, search_code
 
 
 def test_read_file_returns_full_content(tmp_path: Path) -> None:
@@ -187,3 +188,116 @@ def test_read_file_rejects_end_line_beyond_file_length(tmp_path: Path) -> None:
 
     assert result.status == "rejected"
     assert result.error_message == "end_line exceeds file length"
+
+
+def test_search_code_returns_matches(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "src.py").write_text("alpha\nbeta alpha\n", encoding="utf-8")
+
+    result = search_code(workspace_path=workspace_path, query="alpha")
+
+    assert result.status == "passed"
+    assert result.model_dump() == {
+        "tool_name": "search_code",
+        "status": "passed",
+        "summary": "Searched for alpha",
+        "payload": {
+            "query": "alpha",
+            "glob": None,
+            "total_matches": 2,
+            "matches": [
+                {"relative_path": "src.py", "line_number": 1, "line_text": "alpha"},
+                {"relative_path": "src.py", "line_number": 2, "line_text": "beta alpha"},
+            ],
+        },
+        "error_message": None,
+        "workspace_path": str(workspace_path),
+    }
+
+
+def test_search_code_rejects_empty_query(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+
+    result = search_code(workspace_path=workspace_path, query="")
+
+    assert result.status == "rejected"
+    assert result.error_message == "query must not be empty"
+
+
+def test_search_code_applies_glob_filter(tmp_path: Path, monkeypatch) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    calls: list[tuple[list[str], Path]] = []
+
+    def fake_run(command, cwd, capture_output, text, check):
+        calls.append((command, cwd))
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout="src.py:1:alpha\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr("app.tools.read_only.subprocess.run", fake_run)
+
+    result = search_code(workspace_path=workspace_path, query="alpha", glob="*.py")
+
+    assert result.status == "passed"
+    assert calls == [(["rg", "--line-number", "--no-heading", "--glob", "*.py", "alpha"], workspace_path)]
+    assert result.payload == {
+        "query": "alpha",
+        "glob": "*.py",
+        "total_matches": 1,
+        "matches": [{"relative_path": "src.py", "line_number": 1, "line_text": "alpha"}],
+    }
+
+
+def test_search_code_limits_results(tmp_path: Path, monkeypatch) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+
+    def fake_run(command, cwd, capture_output, text, check):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout="src.py:1:alpha\nsrc.py:2:alpha\nsrc.py:3:alpha\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr("app.tools.read_only.subprocess.run", fake_run)
+
+    result = search_code(workspace_path=workspace_path, query="alpha", max_results=2)
+
+    assert result.status == "passed"
+    assert result.payload["total_matches"] == 3
+    assert result.payload["matches"] == [
+        {"relative_path": "src.py", "line_number": 1, "line_text": "alpha"},
+        {"relative_path": "src.py", "line_number": 2, "line_text": "alpha"},
+    ]
+
+
+def test_search_code_returns_no_matches_as_passed(tmp_path: Path, monkeypatch) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+
+    def fake_run(command, cwd, capture_output, text, check):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=1,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr("app.tools.read_only.subprocess.run", fake_run)
+
+    result = search_code(workspace_path=workspace_path, query="alpha")
+
+    assert result.status == "passed"
+    assert result.payload == {
+        "query": "alpha",
+        "glob": None,
+        "total_matches": 0,
+        "matches": [],
+    }

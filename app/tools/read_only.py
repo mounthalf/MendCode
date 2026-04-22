@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 from app.tools.guard import resolve_workspace_file
@@ -123,6 +124,91 @@ def read_file(
             "total_lines": total_lines,
             "content": content,
             "truncated": truncated,
+        },
+        error_message=None,
+        workspace_path=str(workspace_path),
+    )
+
+
+def _reject_search_code(workspace_path: Path, query: str, message: str) -> ToolResult:
+    return ToolResult(
+        tool_name="search_code",
+        status="rejected",
+        summary="Unable to search code",
+        payload={"query": query, "glob": None, "total_matches": 0, "matches": []},
+        error_message=message,
+        workspace_path=str(workspace_path),
+    )
+
+
+def _failed_search_code(
+    workspace_path: Path,
+    query: str,
+    glob: str | None,
+    message: str,
+) -> ToolResult:
+    return ToolResult(
+        tool_name="search_code",
+        status="failed",
+        summary="Unable to search code",
+        payload={"query": query, "glob": glob, "total_matches": 0, "matches": []},
+        error_message=message,
+        workspace_path=str(workspace_path),
+    )
+
+
+def search_code(
+    workspace_path: Path,
+    query: str,
+    glob: str | None = None,
+    max_results: int | None = None,
+) -> ToolResult:
+    if not query.strip():
+        return _reject_search_code(workspace_path, query, "query must not be empty")
+
+    command = ["rg", "--line-number", "--no-heading"]
+    if glob is not None:
+        command.extend(["--glob", glob])
+    command.append(query)
+
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=workspace_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return _failed_search_code(workspace_path, query, glob, str(exc))
+
+    if completed.returncode not in {0, 1}:
+        return _failed_search_code(workspace_path, query, glob, f"rg exited with code {completed.returncode}")
+
+    matches: list[dict[str, object]] = []
+    for line in completed.stdout.splitlines():
+        relative_path, line_number_text, line_text = line.split(":", 2)
+        matches.append(
+            {
+                "relative_path": relative_path,
+                "line_number": int(line_number_text),
+                "line_text": line_text,
+            }
+        )
+
+    total_matches = len(matches)
+    if max_results is not None:
+        matches = matches[:max_results]
+
+    return ToolResult(
+        tool_name="search_code",
+        status="passed",
+        summary=f"Searched for {query}",
+        payload={
+            "query": query,
+            "glob": glob,
+            "total_matches": total_matches,
+            "matches": matches,
         },
         error_message=None,
         workspace_path=str(workspace_path),
