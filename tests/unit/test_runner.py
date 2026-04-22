@@ -156,6 +156,56 @@ def test_run_task_preview_marks_run_passed_when_all_commands_succeed(tmp_path):
     assert result.summary == "Verification passed: 1/1 commands succeeded"
 
 
+def test_run_task_preview_fails_when_fixed_flow_inputs_are_missing(tmp_path):
+    repo_path = init_git_repo(tmp_path)
+    task = TaskSpec(
+        task_id="demo-ci-001",
+        task_type="ci_fix",
+        title="Missing fixed-flow inputs",
+        repo_path=str(repo_path),
+        entry_artifacts={
+            "old_text": "demo",
+            "new_text": "fixed",
+        },
+        verification_commands=[f"{PYTHON} -c \"print('ok')\""],
+    )
+
+    result = run_task_preview(task, build_settings(tmp_path))
+
+    assert result.status == "failed"
+    assert result.current_step == "summarize"
+    assert (
+        result.summary
+        == "Fixed-flow input invalid: either read_target_path or search_query is required"
+    )
+
+
+def test_run_task_preview_accepts_direct_target_path_without_search_query(tmp_path):
+    repo_path = init_git_repo(tmp_path)
+    target = repo_path / "target.txt"
+    target.write_text("wrong\n", encoding="utf-8")
+    subprocess.run(["git", "add", "target.txt"], cwd=repo_path, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "add target"], cwd=repo_path, check=True, capture_output=True, text=True)
+
+    task = TaskSpec(
+        task_id="demo-ci-001",
+        task_type="ci_fix",
+        title="Direct path fixed flow",
+        repo_path=str(repo_path),
+        entry_artifacts={
+            "read_target_path": "target.txt",
+            "old_text": "wrong",
+            "new_text": "fixed",
+        },
+        verification_commands=[f"{PYTHON} -c \"print('ok')\""],
+    )
+
+    result = run_task_preview(task, build_settings(tmp_path))
+
+    assert result.status == "completed"
+    assert result.selected_files == ["target.txt"]
+
+
 def test_run_task_preview_marks_run_failed_when_a_command_fails(tmp_path):
     repo_path = init_git_repo(tmp_path)
     task = TaskSpec(
