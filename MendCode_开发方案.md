@@ -722,6 +722,11 @@ L3 长期记忆：
 - 当前收尾原则也已固定：
   - 先把 Phase 1B command policy / worktree 切片合回 `main`
   - 合并后再进入下一阶段基础工具能力，不在本分支继续堆新功能
+- 合并回 `main` 后已补做一次全量排查与 hygiene 收口：
+  - 新增 `tests/unit/test_repo_hygiene.py`，约束 `.gitignore` 与仓库跟踪文件状态
+  - `.gitignore` 已补齐 `data/traces/`、`.pytest_cache/`、`.ruff_cache/`、`__pycache__/`、`*.py[cod]`
+  - 仓库中被误纳入版本管理的 Python 字节码文件已清理
+  - README 的重复 capability 描述已去重，避免合并后文案继续漂移
 
 补充当前收敛状态：
 

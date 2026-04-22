@@ -5,7 +5,6 @@
 ## Current Capabilities
 
 - Python project skeleton with `pyproject.toml`
-- CLI health check, task file inspection, and `task run` verification execution
 - CLI health check, task file inspection, and `task run` verification execution inside a per-run git worktree
 - Command-policy guarded verification execution with timeout and trace output
 - FastAPI health endpoint
