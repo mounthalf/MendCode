@@ -5,9 +5,9 @@
 ## Current Capabilities
 
 - Python project skeleton with `pyproject.toml`
-- CLI health check, task file inspection, and minimal `task run` preview
+- CLI health check, task file inspection, and `task run` verification execution
 - FastAPI health endpoint
-- JSONL trace output for task run previews
+- JSONL trace output for task runs
 
 ## Install
 
