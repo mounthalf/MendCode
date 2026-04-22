@@ -697,10 +697,15 @@ L3 长期记忆：
   - `RunState` 已支持 `workspace_path`
   - `VerificationCommandResult` 已支持 `timed_out` / `rejected` / `cwd`，且状态约束已收紧
   - `Settings` / `ensure_data_directories()` 已支持 `workspace_root` 与基础执行配置
-- 当前下一优先级已切换到 Task 2：
-  - 实现 `app/workspace/command_policy.py`
-  - 实现 `app/workspace/executor.py`
-  - 将 richer verification schema 真正接到单命令执行结果上
+- 当前已完成下一阶段的第二个落地任务：
+  - Task 2 已完成 `app/workspace/command_policy.py`
+  - Task 2 已完成 `app/workspace/executor.py`
+  - 命令 allowlist、`cwd` 边界、timeout、rejected、launch failure 都已具备结构化结果
+  - richer verification schema 已真正接到单命令执行结果上
+- 当前下一优先级已切换到 Task 3：
+  - 实现 `app/workspace/worktree.py`
+  - 让独立工作区准备与 cleanup 结果具备稳定接口
+  - 为后续 runner 接线准备最小 worktree 管理边界
 
 ### Phase 2：补足上下文工程
 

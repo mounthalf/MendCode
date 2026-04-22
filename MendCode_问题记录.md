@@ -335,6 +335,7 @@ README 一开始仍使用 `Phase 0 Capabilities` 标题，但仓库已经具备 
 
 - 当前阶段先以 `python -m pytest ...` 作为 worktree 内的权威验证方式
 - 在 review 中显式区分“代码问题”和“入口脚本加载路径问题”，避免误判实现未生效
+- Task 2 的 implement / review / 修正阶段都已按这一策略执行，当前实践证明这条规避方式有效
 
 ### 后续约束
 
