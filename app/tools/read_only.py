@@ -4,6 +4,17 @@ from app.tools.guard import resolve_workspace_file
 from app.tools.schemas import ToolResult
 
 
+def _reject_read_file(relative_path: str, workspace_path: Path, message: str) -> ToolResult:
+    return ToolResult(
+        tool_name="read_file",
+        status="rejected",
+        summary=f"Unable to read {relative_path}",
+        payload={"relative_path": relative_path},
+        error_message=message,
+        workspace_path=str(workspace_path),
+    )
+
+
 def read_file(
     workspace_path: Path,
     relative_path: str,
@@ -11,18 +22,61 @@ def read_file(
     end_line: int | None = None,
     max_chars: int | None = None,
 ) -> ToolResult:
+    if start_line is not None and start_line <= 0:
+        return _reject_read_file(relative_path, workspace_path, "start_line must be greater than 0")
+    if end_line is not None and end_line <= 0:
+        return _reject_read_file(relative_path, workspace_path, "end_line must be greater than 0")
+    if start_line is not None and end_line is not None and start_line > end_line:
+        return _reject_read_file(
+            relative_path,
+            workspace_path,
+            "start_line cannot be greater than end_line",
+        )
+    if max_chars is not None and max_chars < 0:
+        return _reject_read_file(relative_path, workspace_path, "max_chars must be greater than or equal to 0")
+
     try:
         target = resolve_workspace_file(workspace_path, relative_path)
-        text = target.read_text(encoding="utf-8")
     except ValueError as exc:
-        return ToolResult(
-            tool_name="read_file",
-            status="rejected",
-            summary=f"Unable to read {relative_path}",
-            payload={"relative_path": relative_path},
-            error_message=str(exc),
-            workspace_path=str(workspace_path),
-        )
+        return _reject_read_file(relative_path, workspace_path, str(exc))
+
+    start = 1 if start_line is None else start_line
+    requested_end = end_line
+    content_parts: list[str] = []
+    content_length = 0
+    total_lines = 0
+    truncated = False
+
+    try:
+        with target.open("r", encoding="utf-8") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                total_lines = line_number
+                if line_number < start:
+                    continue
+
+                if requested_end is not None and line_number > requested_end:
+                    continue
+
+                if truncated:
+                    continue
+
+                if max_chars is None:
+                    content_parts.append(line)
+                    continue
+
+                remaining = max_chars - content_length
+                if remaining <= 0:
+                    truncated = True
+                    continue
+
+                if len(line) <= remaining:
+                    content_parts.append(line)
+                    content_length += len(line)
+                    continue
+
+                content_parts.append(line[:remaining])
+                content_length += remaining
+                truncated = True
     except (UnicodeDecodeError, OSError) as exc:
         return ToolResult(
             tool_name="read_file",
@@ -33,15 +87,8 @@ def read_file(
             workspace_path=str(workspace_path),
         )
 
-    lines = text.splitlines(keepends=True)
-    total_lines = len(lines)
-    start = 1 if start_line is None else start_line
-    end = total_lines if end_line is None else end_line
-    content = "".join(lines[max(start - 1, 0) : end])
-    truncated = False
-    if max_chars is not None and len(content) > max_chars:
-        content = content[:max_chars]
-        truncated = True
+    content = "".join(content_parts)
+    end = total_lines if requested_end is None else requested_end
 
     return ToolResult(
         tool_name="read_file",

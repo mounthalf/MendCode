@@ -78,3 +78,64 @@ def test_read_file_rejects_missing_path(tmp_path: Path) -> None:
 
     assert result.status == "rejected"
     assert result.error_message == "path does not exist"
+
+
+def test_read_file_rejects_non_positive_start_line(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+
+    result = read_file(
+        workspace_path=workspace_path,
+        relative_path="notes.txt",
+        start_line=0,
+    )
+
+    assert result.status == "rejected"
+    assert result.error_message == "start_line must be greater than 0"
+
+
+def test_read_file_rejects_non_positive_end_line(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+
+    result = read_file(
+        workspace_path=workspace_path,
+        relative_path="notes.txt",
+        end_line=0,
+    )
+
+    assert result.status == "rejected"
+    assert result.error_message == "end_line must be greater than 0"
+
+
+def test_read_file_rejects_start_line_after_end_line(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+
+    result = read_file(
+        workspace_path=workspace_path,
+        relative_path="notes.txt",
+        start_line=3,
+        end_line=2,
+    )
+
+    assert result.status == "rejected"
+    assert result.error_message == "start_line cannot be greater than end_line"
+
+
+def test_read_file_rejects_negative_max_chars(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8")
+
+    result = read_file(
+        workspace_path=workspace_path,
+        relative_path="notes.txt",
+        max_chars=-1,
+    )
+
+    assert result.status == "rejected"
+    assert result.error_message == "max_chars must be greater than or equal to 0"
