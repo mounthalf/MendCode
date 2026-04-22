@@ -90,6 +90,23 @@ def read_file(
     content = "".join(content_parts)
     end = total_lines if requested_end is None else requested_end
 
+    if total_lines == 0 and start_line is None and requested_end is None:
+        return ToolResult(
+            tool_name="read_file",
+            status="passed",
+            summary=f"Read {relative_path}",
+            payload={
+                "relative_path": relative_path,
+                "start_line": 0,
+                "end_line": 0,
+                "total_lines": 0,
+                "content": content,
+                "truncated": truncated,
+            },
+            error_message=None,
+            workspace_path=str(workspace_path),
+        )
+
     if start > total_lines:
         return _reject_read_file(relative_path, workspace_path, "start_line exceeds file length")
     if requested_end is not None and requested_end > total_lines:

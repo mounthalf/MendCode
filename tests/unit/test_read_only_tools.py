@@ -53,6 +53,24 @@ def test_read_file_returns_requested_line_range(tmp_path: Path) -> None:
     }
 
 
+def test_read_file_returns_empty_file_as_passed(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "empty.txt").write_text("", encoding="utf-8")
+
+    result = read_file(workspace_path=workspace_path, relative_path="empty.txt")
+
+    assert result.status == "passed"
+    assert result.payload == {
+        "relative_path": "empty.txt",
+        "start_line": 0,
+        "end_line": 0,
+        "total_lines": 0,
+        "content": "",
+        "truncated": False,
+    }
+
+
 def test_read_file_truncates_large_content(tmp_path: Path) -> None:
     workspace_path = tmp_path / "workspace"
     workspace_path.mkdir()
