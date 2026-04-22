@@ -312,6 +312,37 @@ README 一开始仍使用 `Phase 0 Capabilities` 标题，但仓库已经具备 
 
 ---
 
+## 问题 10：嵌套 worktree 下直接调用 `pytest`，可能命中外层主工作区的 editable install，导致测试加载到旧代码
+
+- 时间：Phase 1B / Task 1
+- 阶段：schema / settings 底座落地与验证
+- 状态：部分解决
+
+### 现象
+
+在 `/home/wxh/MendCode/.worktrees/...` 这样的嵌套 worktree 中执行：
+
+- `python -m pytest ...` 会加载当前 worktree 中的代码，测试通过
+- `pytest ...` 则可能加载外层主工作区 `/home/wxh/MendCode` 的 editable install，表现为测试仍然看到旧版 schema，形成“代码已改、测试仍像没改”的假象
+
+### 根因
+
+- 当前 Python 环境里存在指向外层主工作区的 editable install
+- `pytest` console entrypoint 与 `python -m pytest` 的导入路径优先级不同
+- 当 worktree 嵌套在主工作区目录下时，这个差异会被放大
+
+### 解决方案
+
+- 当前阶段先以 `python -m pytest ...` 作为 worktree 内的权威验证方式
+- 在 review 中显式区分“代码问题”和“入口脚本加载路径问题”，避免误判实现未生效
+
+### 后续约束
+
+- 后续在该 worktree 内执行 Python 测试时，优先使用 `python -m pytest`
+- 进入更大范围的实现前，可以评估是否要清理或重装 editable install，避免 `pytest` / `python -m pytest` 行为继续分叉
+
+---
+
 ## 5. 下一步维护建议
 
 - 后续进入 Phase 1B 时，继续按这份文档追加真实问题，不要等到阶段结束再回忆补录

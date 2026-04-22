@@ -691,6 +691,16 @@ L3 长期记忆：
   3. `app/workspace/worktree.py`
   4. runner 接线与 trace 扩展
   5. 再进入 `read_file` / `search_code` / `apply_patch`
+- 当前已完成下一阶段的第一个落地任务：
+  - Task 1 已完成 schema / settings 底座扩展
+  - `TaskSpec` 已支持 `base_ref`
+  - `RunState` 已支持 `workspace_path`
+  - `VerificationCommandResult` 已支持 `timed_out` / `rejected` / `cwd`，且状态约束已收紧
+  - `Settings` / `ensure_data_directories()` 已支持 `workspace_root` 与基础执行配置
+- 当前下一优先级已切换到 Task 2：
+  - 实现 `app/workspace/command_policy.py`
+  - 实现 `app/workspace/executor.py`
+  - 将 richer verification schema 真正接到单命令执行结果上
 
 ### Phase 2：补足上下文工程
 
