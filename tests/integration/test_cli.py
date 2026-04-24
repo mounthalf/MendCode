@@ -263,3 +263,40 @@ def test_task_run_reports_failed_verification_without_cli_crash(monkeypatch, tmp
     assert "failed_count" in result.stdout
     assert "First non-passed command: failed" in result.stdout
     assert f'{PYTHON} -c "import sys; sys.exit(3)"' in result.stdout
+
+
+def test_fix_command_runs_verification_and_reports_failure_insight(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("app.cli.main.console.width", 200, raising=False)
+    repo_path = init_git_repo(tmp_path)
+    command = (
+        f"{PYTHON} -c "
+        "\"print('FAILED tests/test_calculator.py::test_add - "
+        "AssertionError: assert -1 == 5'); raise SystemExit(1)\""
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "fix",
+            "修复 pytest 失败",
+            "--test",
+            command,
+            "--repo",
+            str(repo_path),
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert "Agent Fix" in result.stdout
+    assert "修复 pytest 失败" in result.stdout
+    assert "run_id" in result.stdout
+    assert "preview-" in result.stdout
+    assert "status" in result.stdout
+    assert "failed" in result.stdout
+    assert "failed_node" in result.stdout
+    assert "tests/test_calculator.py::test_add" in result.stdout
+    assert "error_summary" in result.stdout
+    assert "AssertionError: assert -1 == 5" in result.stdout
+    assert "trace_path" in result.stdout

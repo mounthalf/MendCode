@@ -9,8 +9,9 @@ from rich.table import Table
 
 from app.config.settings import get_settings
 from app.core.paths import ensure_data_directories
+from app.orchestrator.failure_parser import extract_failure_insight
 from app.orchestrator.runner import run_task_preview
-from app.schemas.task import load_task_spec
+from app.schemas.task import TaskSpec, load_task_spec
 from app.schemas.trace import TraceEvent
 from app.tracing.recorder import TraceRecorder
 
@@ -40,6 +41,60 @@ def health() -> None:
     table.add_row("project_root", str(settings.project_root))
     table.add_row("tasks_dir", str(settings.tasks_dir))
     table.add_row("traces_dir", str(settings.traces_dir))
+    console.print(table)
+
+
+@app.command("fix")
+def fix_problem(
+    problem_statement: str,
+    test_commands: list[str] = typer.Option(
+        ...,
+        "--test",
+        "-t",
+        help="Verification command to run. Can be supplied multiple times.",
+    ),
+    repo: Path = typer.Option(Path("."), "--repo", help="Repository path to fix."),
+    max_attempts: int = typer.Option(3, "--max-attempts", min=1),
+) -> None:
+    settings = get_settings()
+    ensure_data_directories(settings)
+    task = TaskSpec(
+        task_id=f"agent-fix-{uuid4().hex[:12]}",
+        task_type="ci_fix",
+        title="Agent fix",
+        repo_path=str(repo.resolve()),
+        problem_statement=problem_statement,
+        verification_commands=test_commands,
+        max_attempts=max_attempts,
+        allowed_tools=["run_command", "read_file", "search_code", "apply_patch"],
+        metadata={"source": "cli.fix"},
+    )
+
+    try:
+        state = run_task_preview(task, settings)
+    except OSError as exc:
+        typer.echo(f"Agent fix failed while writing trace output: {exc}")
+        raise typer.Exit(code=1)
+
+    insight = None
+    if state.verification is not None:
+        insight = extract_failure_insight(state.verification.command_results)
+
+    table = Table(title="Agent Fix")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("run_id", state.run_id)
+    table.add_row("problem_statement", problem_statement)
+    table.add_row("status", state.status)
+    table.add_row("summary", state.summary)
+    table.add_row("max_attempts", str(max_attempts))
+    table.add_row("workspace_path", state.workspace_path or "")
+    table.add_row("trace_path", state.trace_path)
+    if insight is not None:
+        table.add_row("failed_node", insight.failed_node or "")
+        table.add_row("file_path", insight.file_path or "")
+        table.add_row("test_name", insight.test_name or "")
+        table.add_row("error_summary", insight.error_summary)
     console.print(table)
 
 

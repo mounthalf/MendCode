@@ -91,7 +91,49 @@ def test_task_spec_defaults_base_ref_to_none(tmp_path):
     assert task.base_ref is None
 
 
-def test_load_task_spec_from_fixture():
+def test_task_spec_accepts_agent_problem_statement_without_entry_artifacts(tmp_path):
+    payload = {
+        "task_id": "agent-ci-001",
+        "task_type": "ci_fix",
+        "title": "Fix pytest failure",
+        "repo_path": str(tmp_path),
+        "problem_statement": "pytest 中 test_add 失败，请定位并修复问题",
+        "verification_commands": ["python -m pytest -q"],
+        "allowed_tools": ["run_command", "read_file", "search_code", "apply_patch"],
+        "metadata": {"source": "cli.fix"},
+    }
+
+    task = TaskSpec.model_validate(payload)
+
+    assert task.problem_statement == "pytest 中 test_add 失败，请定位并修复问题"
+    assert task.entry_artifacts == {}
+    assert task.max_attempts == 3
+    assert task.allowed_tools == ["run_command", "read_file", "search_code", "apply_patch"]
+    assert task.metadata == {"source": "cli.fix"}
+
+
+def test_task_spec_rejects_non_positive_max_attempts(tmp_path):
+    payload = {
+        "task_id": "agent-ci-002",
+        "task_type": "ci_fix",
+        "title": "Fix pytest failure",
+        "repo_path": str(tmp_path),
+        "problem_statement": "pytest failed",
+        "verification_commands": ["python -m pytest -q"],
+        "max_attempts": 0,
+    }
+
+    with pytest.raises(ValidationError):
+        TaskSpec.model_validate(payload)
+
+
+def test_default_quickstart_demo_file_exists():
+    fixture_path = Path(__file__).resolve().parents[2] / "data" / "tasks" / "demo.json"
+
+    assert fixture_path.exists()
+
+
+def test_load_task_spec_from_default_quickstart_demo_fixture():
     fixture_path = Path(__file__).resolve().parents[2] / "data" / "tasks" / "demo.json"
     task = load_task_spec(fixture_path)
 

@@ -15,8 +15,10 @@ class TaskSpec(BaseModel):
     title: str
     repo_path: str
     base_ref: str | None = None
-    entry_artifacts: dict[str, Any]
+    problem_statement: str | None = None
+    entry_artifacts: dict[str, Any] = Field(default_factory=dict)
     verification_commands: list[str]
+    max_attempts: int = Field(default=3, ge=1)
     allowed_tools: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
