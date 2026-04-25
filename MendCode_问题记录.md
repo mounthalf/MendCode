@@ -1086,3 +1086,41 @@ fake provider 修复链路中，第一次验证在 worktree 中导入 `calculato
 - 任何 patch 后验证链路都不能只看最后一个 observation
 - 涉及 Python 源码 patch 的验证链路要考虑字节码缓存影响
 - 如果后续新增其它语言或构建系统的缓存副作用，应在 worktree patch 后或 verification 前建立对应清理策略
+
+---
+
+## 问题 29：真实 OpenAI-compatible 模型输出会偏离严格 JSON Action 合约
+
+- 时间：2026-04-25
+- 阶段：Minimax provider smoke / TUI single-turn entry
+- 状态：已解决
+
+### 现象
+
+接入 Minimax 后，低层 chat-completions 请求可以成功返回内容，但 MendCode provider smoke 初次失败：
+
+- 模型会在 JSON 前输出 `<think>...</think>`
+- 模型把 action discriminator 写成 `action_type`
+- no-argument TUI 初版只展示通用 review，没有像 `fix` 入口一样展示 pytest `failed_node` 和 location steps
+
+### 根因
+
+- 当前 OpenAI-compatible adapter 只接受整段内容就是 JSON object 或单个 fenced JSON
+- provider prompt 虽然说“valid MendCodeAction”，但没有给出最小合法字段示例，真实模型容易套用自创字段名
+- TUI-shaped 入口复用了 `AgentSession.run_turn()` 后，遗漏了过渡 `fix` 入口中已经沉淀的 failure insight 和失败位置定位展示
+
+### 解决方案
+
+- 将 `minimax` 作为 `openai-compatible` 的显式 provider alias
+- 在 JSON 提取失败时，从响应文本中提取第一个可解析 JSON object，兼容 reasoning preamble
+- 在 provider prompt contract 中加入 `"type"` discriminator 示例，并明确不要使用 `action_type`
+- 新增 `AgentSession.run_turn()` 与 `session.turns`，作为 TUI-facing 业务边界
+- no-argument `mendcode` 入口补充 Tool Summary、Review、Failure Insight 和 location steps 展示
+- `Tool Summary` 只展示 `tool_call`，避免把 `final_response` 混入工具摘要
+
+### 后续约束
+
+- 真实 provider smoke 要区分“接口不可用”和“接口可用但输出不符合 MendCode Action schema”
+- OpenAI-compatible provider 不应为每个厂商写业务逻辑，优先通过 alias、prompt contract 和通用 JSON 提取增强兼容性
+- TUI 入口必须复用 session 层和已有 failure insight 能力，不应重新绕过业务层直接解释 loop steps
+- 文档中的 API 示例必须随 `AgentSession` 实际接口同步更新

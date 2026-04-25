@@ -85,9 +85,9 @@ mendcode
 - [ ] 真实模型端到端修复稳定性验证
 - [x] patch proposal schema
 - [ ] 真实 LLM 输出 patch proposal
-- [ ] diff summary 与 TUI review 收尾
-- [ ] TUI 聊天界面
-- [ ] 工具调用摘要展示
+- [x] diff summary 与 TUI review 收尾
+- [x] 最小单轮 TUI-shaped 入口
+- [x] 工具调用摘要展示
 - [ ] apply / discard 收尾动作
 
 ---
@@ -305,21 +305,21 @@ mendcode
 交付：
 
 - [ ] 启动轻量 repo scan
-- [ ] 聊天输入
+- [x] 聊天输入
 - [x] Guided Mode 默认权限
-- [ ] 工具调用摘要展示
+- [x] 工具调用摘要展示
 - [ ] 详情展开
-- [ ] 工程审查收尾
+- [x] 工程审查收尾
 - [ ] view diff / logs / trace / apply / discard
 
 验收：
 
-- [ ] 用户可以在 TUI 中描述问题
+- [x] 用户可以在 TUI 中描述问题
 - [x] Agent 能完成一次 worktree 内修复尝试
 - [ ] 用户可以基于工程审查摘要决定 apply 或 discard
 - [x] 用户不需要写 JSON
 - [x] 用户不需要提供手工文本替换补丁
-- [ ] Agent 每一步工具调用都有摘要
+- [x] Agent 每一步工具调用都有摘要
 - [x] 修复结果必须有验证命令证明
 
 ---
@@ -343,8 +343,8 @@ mendcode fix "<problem>" --test "<command>"
 
 当前接续点：
 
-- [ ] `AgentSession.run_turn()` 单轮会话抽象
-- [ ] `session.turns` 持续追加，为后续多轮聊天保留状态
+- [x] `AgentSession.run_turn()` 单轮会话抽象
+- [x] `session.turns` 持续追加，为后续多轮聊天保留状态
 
 后续不要继续把它扩展成完整产品。新增能力应优先服务 TUI Agent 主线。
 

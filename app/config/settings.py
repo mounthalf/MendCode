@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app import APP_NAME, __version__
 
 DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-ProviderName = Literal["scripted", "openai-compatible"]
+ProviderName = Literal["scripted", "openai-compatible", "minimax"]
 
 
 def _setting_value(

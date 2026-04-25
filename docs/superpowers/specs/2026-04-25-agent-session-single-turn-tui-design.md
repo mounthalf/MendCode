@@ -93,9 +93,10 @@ Fields:
 First API:
 
 ```python
-session = AgentSession(repo_path=Path("."), permission_mode="guided")
+provider = build_agent_provider(settings)
+session = AgentSession(repo_path=Path("."), provider=provider, permission_mode="guided")
 turn = session.run_turn(
-    user_message="pytest failed, fix it",
+    problem_statement="pytest failed, fix it",
     verification_commands=["python -m pytest -q"],
 )
 ```

@@ -440,14 +440,14 @@ Custom Mode：
 
 第一版 TUI Agent MVP 支持：
 
-- [ ] `mendcode` 启动 TUI
+- [x] `mendcode` 启动 TUI
 - [ ] 轻量 repo scan
-- [ ] 聊天输入
+- [x] 聊天输入
 - [x] Guided permission mode
 - [x] Provider-driven Action loop 底座
 - [x] LLM Action loop 的 JSON Action prompt/context 底座
 - [ ] 真实模型端到端修复稳定性验证
-- [ ] 工具调用摘要展示
+- [x] 工具调用摘要展示
 - [x] 工具：`repo_status` / `detect_project` / `run_command` / `read_file` / `search_code`
 - [x] 生成 patch proposal schema
 - [x] 用户确认后 apply 到 worktree 的底层能力
@@ -456,7 +456,7 @@ Custom Mode：
 - [x] trace 记录
 - [x] `ReviewSummary` 会话审查摘要模型
 - [x] `AttemptRecord` 失败尝试记录模型
-- [ ] 工程审查收尾
+- [x] 工程审查收尾
 
 第一版不支持：
 
@@ -550,8 +550,8 @@ Actions:
 
 - [x] 用户不需要写 JSON
 - [x] 用户不需要提供手工文本替换补丁
-- [ ] 用户可以只用自然语言描述问题
-- [ ] Agent 能展示每一步工具调用摘要
+- [x] 用户可以只用自然语言描述问题
+- [x] Agent 能展示每一步工具调用摘要
 - [x] Agent 的修改只发生在 worktree
 - [x] 修复结果必须有验证命令证明
 - [x] 用户可以查看 diff summary 的底层数据
@@ -590,5 +590,5 @@ mendcode
 
 当前接续点：
 
-- [ ] `AgentSession.run_turn()` 单轮会话抽象
-- [ ] `session.turns` 持续追加，为后续多轮聊天保留状态
+- [x] `AgentSession.run_turn()` 单轮会话抽象
+- [x] `session.turns` 持续追加，为后续多轮聊天保留状态

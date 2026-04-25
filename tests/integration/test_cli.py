@@ -253,6 +253,113 @@ def test_fix_command_can_use_openai_compatible_provider_without_network(
     assert fake_provider.calls[0].verification_commands
 
 
+def test_no_args_command_runs_minimal_tui_turn(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("app.cli.main.console.width", 200, raising=False)
+    fake_provider = FakeOpenAICompatibleProvider()
+    monkeypatch.setattr("app.cli.main.build_agent_provider", lambda settings: fake_provider)
+    repo_path = init_git_repo(tmp_path)
+    command = f"{PYTHON} -c \"raise SystemExit(0)\""
+
+    with monkeypatch.context() as context:
+        context.chdir(repo_path)
+        result = runner.invoke(
+            app,
+            [],
+            input=f"修复 pytest 失败\n{command}\n",
+            terminal_width=200,
+        )
+
+    assert result.exit_code == 0
+    assert "MendCode" in result.stdout
+    assert "repo:" in result.stdout
+    assert "mode: guided" in result.stdout
+    assert "Tool Summary" in result.stdout
+    assert "Review" in result.stdout
+    assert "fake openai-compatible provider completed" in result.stdout
+    assert "view_trace" in result.stdout
+    assert len(fake_provider.calls) == 3
+
+
+def test_no_args_command_reports_failure_insight_and_location_steps(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("app.cli.main.console.width", 200, raising=False)
+    fake_provider = FakeOpenAICompatibleProvider()
+    monkeypatch.setattr("app.cli.main.build_agent_provider", lambda settings: fake_provider)
+    repo_path = init_git_repo(tmp_path)
+    tests_dir = repo_path / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_calculator.py").write_text(
+        "def test_add():\n    assert -1 == 5\n",
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ["git", "add", "tests/test_calculator.py"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "add failing test"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    command = (
+        f"{PYTHON} -c "
+        "\"print('FAILED tests/test_calculator.py::test_add - "
+        "AssertionError: assert -1 == 5'); raise SystemExit(1)\""
+    )
+
+    with monkeypatch.context() as context:
+        context.chdir(repo_path)
+        result = runner.invoke(
+            app,
+            [],
+            input=f"修复 pytest 失败\n{command}\n",
+            terminal_width=200,
+        )
+
+    assert result.exit_code == 0
+    assert "failed_node" in result.stdout
+    assert "tests/test_calculator.py::test_add" in result.stdout
+    assert "error_summary" in result.stdout
+    assert "AssertionError: assert -1 == 5" in result.stdout
+    assert "location_status" in result.stdout
+    assert "location_steps" in result.stdout
+    assert "read_file:succeeded" in result.stdout
+    assert "search_code:succeeded" in result.stdout
+
+
+def test_no_args_command_rejects_empty_verification_command(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("app.cli.main.console.width", 200, raising=False)
+    fake_provider = FakeOpenAICompatibleProvider()
+    monkeypatch.setattr("app.cli.main.build_agent_provider", lambda settings: fake_provider)
+    repo_path = init_git_repo(tmp_path)
+
+    with monkeypatch.context() as context:
+        context.chdir(repo_path)
+        result = runner.invoke(
+            app,
+            [],
+            input="修复 pytest 失败\n   \n",
+            terminal_width=200,
+        )
+
+    assert result.exit_code != 0
+    assert "Verification command is required" in result.stdout
+    assert fake_provider.calls == []
+
+
 def test_task_command_is_no_longer_registered() -> None:
     result = runner.invoke(app, ["task", "validate", "task.json"])
 

@@ -128,11 +128,15 @@ def _system_prompt() -> str:
         "user_confirmation_request, final_response.\n"
         "Allowed tool actions: repo_status, detect_project, run_command, read_file, "
         "search_code, apply_patch_to_worktree, show_diff.\n"
+        "Use the discriminator field named type. Do not use action_type. Examples: "
+        '{"type": "tool_call", "action": "repo_status", "reason": "inspect", "args": {}}; '
+        '{"type": "final_response", "status": "completed", "summary": "verified", '
+        '"recommended_actions": []}.\n'
         "Repair workflow: inspect repo status and project type if unknown; run or inspect "
         "verification failure; read failing test files; search candidate implementation; "
         "propose a unified diff patch with patch_proposal; rerun verification; show_diff; "
         "then return final_response.\n"
-        "Never claim completed after a failed verification. Use final_response.failed when "
+        'Never claim completed after a failed verification. Use "status": "failed" when '
         "the repair is not verified or the step budget is low."
     )
 

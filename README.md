@@ -11,6 +11,8 @@ MendCode 的目标形态是终端 TUI 工作台：用户输入 `mendcode` 进入
 - Minimal Agent Action Loop for tool calls, observations, permission decisions, and trace output
 - Provider-driven Agent loop with scripted default and optional OpenAI-compatible JSON Action provider
 - Secret-safe provider prompt context with a JSON Action repair contract
+- Single-turn `mendcode` entry that prompts for a task and verification command, then renders tool and review summaries
+- Session turn model for TUI-facing review, attempt, and tool summary data
 - Transitional `mendcode fix "<problem>" --test "<command>"` entry wired through the Agent loop
 - Command-policy guarded verification execution with timeout and trace output
 - Pytest-style failure insight extraction for failed verification output
@@ -51,6 +53,7 @@ pip install -e ".[dev]"
 Transitional agent-style verification:
 
 ```bash
+mendcode
 mendcode fix "pytest 失败了，请定位并修复" --repo . --test "python -m pytest -q"
 ```
 
@@ -65,10 +68,13 @@ mendcode health
 In this nested worktree development setup, `python -m app.cli.main ...` is the authoritative invocation path. The `mendcode ...` examples remain valid for normal installed usage, but the branch-accurate commands are:
 
 ```bash
+python -m app.cli.main
 python -m app.cli.main version
 python -m app.cli.main health
 python -m app.cli.main fix "pytest 失败了，请定位并修复" --repo . --test "python -m pytest -q"
 ```
+
+The no-argument `mendcode` entry is the first TUI-shaped slice. It performs a lightweight repository header, prompts for a natural language task and verification command, runs a single `AgentSession` turn in an isolated worktree, then renders tool and review summaries.
 
 `fix` defaults to the scripted provider, then runs the Agent loop in an isolated git worktree over repository status, project detection, and the supplied verification command. It extracts pytest-style failure details, records trace output, and reports the worktree path. Patch proposal execution and diff summary are available inside the Agent loop and will be wired to model-driven repair next.
 
@@ -87,6 +93,8 @@ MENDCODE_BASE_URL="<base-url>"
 MENDCODE_API_KEY="<key>"
 MENDCODE_PROVIDER_TIMEOUT_SECONDS=60
 ```
+
+For Minimax-compatible chat-completions endpoints, set `MENDCODE_PROVIDER=minimax`. It is treated as an explicit alias for the same OpenAI-compatible provider path and still requires `MENDCODE_MODEL`, `MENDCODE_BASE_URL`, and `MENDCODE_API_KEY`.
 
 Shell environment variables override values from `.env`. The local `.env` file is ignored by git; keep real API keys out of commits.
 

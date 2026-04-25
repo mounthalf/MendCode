@@ -11,7 +11,7 @@ def build_agent_provider(settings: Settings) -> AgentProvider:
     if settings.provider == "scripted":
         return ScriptedAgentProvider()
 
-    if settings.provider == "openai-compatible":
+    if settings.provider in {"openai-compatible", "minimax"}:
         if (
             not settings.provider_model
             or not settings.provider_base_url

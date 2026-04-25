@@ -57,10 +57,26 @@ def extract_action_json(text: str) -> dict[str, object]:
     fence_match = _JSON_FENCE.match(stripped)
     if fence_match is not None:
         stripped = fence_match.group("body").strip()
-    parsed = json.loads(stripped)
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        parsed = _extract_first_json_object(stripped)
     if not isinstance(parsed, dict):
         raise ValueError("action JSON must be an object")
     return parsed
+
+
+def _extract_first_json_object(text: str) -> object:
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(text):
+        if character != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        return parsed
+    raise ValueError("no JSON object found")
 
 
 class OpenAICompatibleAgentProvider:

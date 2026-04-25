@@ -81,6 +81,21 @@ def test_settings_reads_openai_compatible_provider_env(monkeypatch, tmp_path):
     assert settings.provider_timeout_seconds == 12
 
 
+def test_settings_accepts_minimax_provider_alias(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("MENDCODE_PROVIDER", "minimax")
+    monkeypatch.setenv("MENDCODE_MODEL", "minimax-model")
+    monkeypatch.setenv("MENDCODE_BASE_URL", "https://api.minimax.test/v1")
+    monkeypatch.setenv("MENDCODE_API_KEY", "secret-key")
+
+    settings = get_settings()
+
+    assert settings.provider == "minimax"
+    assert settings.provider_model == "minimax-model"
+    assert settings.provider_base_url == "https://api.minimax.test/v1"
+    assert settings.provider_api_key == "secret-key"
+
+
 def test_settings_reads_provider_values_from_project_env_file(monkeypatch, tmp_path):
     monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
     monkeypatch.delenv("MENDCODE_PROVIDER", raising=False)

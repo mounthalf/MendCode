@@ -1,6 +1,8 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.agent.loop import AgentLoopResult
+from app.agent.loop import AgentLoopInput, AgentLoopResult, run_agent_loop
+from app.agent.permission import PermissionMode
+from app.config.settings import Settings, get_settings
 
 
 class ReviewSummary(BaseModel):
@@ -24,6 +26,89 @@ class AttemptRecord(BaseModel):
     patch_status: str
     verification_status: str
     error_message: str | None = None
+
+
+class ToolCallSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int
+    action: str
+    status: str
+    summary: str
+
+
+class AgentSessionTurn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int
+    problem_statement: str
+    result: AgentLoopResult
+    review: ReviewSummary
+    attempts: list[AttemptRecord] = Field(default_factory=list)
+    tool_summaries: list[ToolCallSummary] = Field(default_factory=list)
+
+
+class AgentSession:
+    def __init__(
+        self,
+        *,
+        repo_path,
+        provider,
+        settings: Settings | None = None,
+        permission_mode: PermissionMode = "guided",
+    ) -> None:
+        self.repo_path = repo_path
+        self.provider = provider
+        self.settings = settings or get_settings()
+        self.permission_mode: PermissionMode = permission_mode
+        self.turns: list[AgentSessionTurn] = []
+
+    def run_turn(
+        self,
+        *,
+        problem_statement: str,
+        verification_commands: list[str],
+        step_budget: int = 12,
+    ) -> AgentSessionTurn:
+        result = run_agent_loop(
+            AgentLoopInput(
+                repo_path=self.repo_path,
+                problem_statement=problem_statement,
+                provider=self.provider,
+                verification_commands=verification_commands,
+                permission_mode=self.permission_mode,
+                step_budget=step_budget,
+                use_worktree=True,
+            ),
+            self.settings,
+        )
+        turn = AgentSessionTurn(
+            index=len(self.turns) + 1,
+            problem_statement=problem_statement,
+            result=result,
+            review=build_review_summary(result),
+            attempts=build_attempt_records(result),
+            tool_summaries=build_tool_summaries(result),
+        )
+        self.turns.append(turn)
+        return turn
+
+
+def build_tool_summaries(loop_result: AgentLoopResult) -> list[ToolCallSummary]:
+    summaries: list[ToolCallSummary] = []
+    for step in loop_result.steps:
+        if step.action.type != "tool_call":
+            continue
+        action_name = getattr(step.action, "action", step.action.type)
+        summaries.append(
+            ToolCallSummary(
+                index=step.index,
+                action=str(action_name),
+                status=step.observation.status,
+                summary=step.observation.summary,
+            )
+        )
+    return summaries
 
 
 def _latest_verification_status(loop_result: AgentLoopResult) -> str:

@@ -61,3 +61,17 @@ def test_build_agent_provider_constructs_openai_compatible_provider(tmp_path: Pa
     )
 
     assert isinstance(provider, OpenAICompatibleAgentProvider)
+
+
+def test_build_agent_provider_treats_minimax_as_openai_compatible(tmp_path: Path) -> None:
+    provider = build_agent_provider(
+        settings_for(
+            tmp_path,
+            provider="minimax",
+            model="minimax-model",
+            base_url="https://api.minimax.test/v1",
+            api_key="secret-key",
+        )
+    )
+
+    assert isinstance(provider, OpenAICompatibleAgentProvider)

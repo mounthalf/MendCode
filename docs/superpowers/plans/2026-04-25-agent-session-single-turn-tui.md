@@ -17,8 +17,9 @@ Last reconciled: 2026-04-25.
 - [x] Task 1 completed in `fde8243` and `5564e7f`: `ReviewSummary` exists, and `verified` requires both passed verification and completed loop status.
 - [x] Task 2 completed in `8d255fb` and `3fd19f8`: `AttemptRecord` exists, and patch attempts scan all following verification commands until the next patch proposal.
 - [x] Task 2 quality follow-up verified with `python -m pytest tests/unit/test_agent_session.py -q` and `python -m ruff check app/agent/session.py tests/unit/test_agent_session.py`.
-- [ ] Next implementation task: Task 3, `AgentSession` single-turn support. Keep the API shaped for future multi-turn chat by appending turns to `session.turns`.
-- [ ] Do not mark TUI entry, natural-language main input, apply/discard behavior, or `max_attempts` retry complete until code and tests land.
+- [x] Task 3 completed in the current working tree: `AgentSession.run_turn()` appends `AgentSessionTurn` records to `session.turns` and exposes review, attempt, and tool summaries.
+- [x] Minimal no-argument `mendcode` entry completed in the current working tree: Typer/Rich single-turn prompt, Tool Summary, Review, Failure Insight, and location steps are covered by integration tests.
+- [ ] Do not mark apply/discard behavior, detail expansion, or `max_attempts` retry complete until code and tests land.
 
 ---
 
@@ -445,7 +446,7 @@ def test_agent_session_run_turn_preserves_turn_history_and_workspace(tmp_path: P
     session = AgentSession(repo_path=repo_path, settings=settings_for(tmp_path))
 
     turn = session.run_turn(
-        user_message="run verification",
+        problem_statement="run verification",
         verification_commands=[command],
     )
 
@@ -479,7 +480,7 @@ from app.config.settings import Settings
 class AgentTurn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    user_message: str
+    problem_statement: str
     loop_result: AgentLoopResult
     attempts: list[AttemptRecord] = Field(default_factory=list)
     review_summary: ReviewSummary
@@ -496,13 +497,13 @@ class AgentSession(BaseModel):
     def run_turn(
         self,
         *,
-        user_message: str,
+        problem_statement: str,
         verification_commands: list[str],
     ) -> AgentTurn:
         provider = ScriptedAgentProvider()
         provider_response = provider.plan_actions(
             AgentProviderInput(
-                problem_statement=user_message,
+                problem_statement=problem_statement,
                 verification_commands=verification_commands,
             )
         )
@@ -511,7 +512,7 @@ class AgentSession(BaseModel):
         loop_result = run_agent_loop(
             AgentLoopInput(
                 repo_path=self.repo_path,
-                problem_statement=user_message,
+                problem_statement=problem_statement,
                 actions=provider_response.actions,
                 permission_mode=self.permission_mode,
                 step_budget=len(provider_response.actions),
@@ -520,7 +521,7 @@ class AgentSession(BaseModel):
             self.settings,
         )
         turn = AgentTurn(
-            user_message=user_message,
+            problem_statement=problem_statement,
             loop_result=loop_result,
             attempts=build_attempt_records(loop_result),
             review_summary=build_review_summary(loop_result),
@@ -570,7 +571,7 @@ In `app/cli/main.py`, import `AgentSession` and replace the direct `run_agent_lo
 ```python
 session = AgentSession(repo_path=repo.resolve(), settings=settings)
 turn = session.run_turn(
-    user_message=problem_statement,
+    problem_statement=problem_statement,
     verification_commands=test_commands,
 )
 result = turn.loop_result
@@ -653,9 +654,12 @@ def main(
     console.print("MendCode")
     console.print(f"repo: {repo.resolve()}")
     console.print("mode: guided")
-    user_message = typer.prompt("Type your task")
+    problem_statement = typer.prompt("Type your task")
     session = AgentSession(repo_path=repo.resolve(), settings=settings)
-    turn = session.run_turn(user_message=user_message, verification_commands=test_commands)
+    turn = session.run_turn(
+        problem_statement=problem_statement,
+        verification_commands=test_commands,
+    )
     review = turn.review_summary
     table = Table(title="Review")
     table.add_column("Field")

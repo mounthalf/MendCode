@@ -1,5 +1,10 @@
+import subprocess
+
 from app.agent.loop import AgentLoopResult, AgentStep
+from app.agent.provider import AgentProviderStepInput, ProviderResponse
 from app.agent.session import (
+    AgentSession,
+    AgentSessionTurn,
     AttemptRecord,
     ReviewSummary,
     build_attempt_records,
@@ -39,6 +44,97 @@ def patch_step(index: int, status: str, error_message: str | None = None) -> Age
             error_message=error_message,
         ),
     )
+
+
+def init_session_repo(repo_path) -> None:
+    repo_path.mkdir()
+    subprocess.run(["git", "init"], cwd=repo_path, check=True, capture_output=True, text=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    (repo_path / "README.md").write_text("demo\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "README.md"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "init"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+class SessionFakeProvider:
+    def __init__(self) -> None:
+        self.calls: list[AgentProviderStepInput] = []
+
+    def next_action(self, step_input: AgentProviderStepInput) -> ProviderResponse:
+        self.calls.append(step_input)
+        if len(self.calls) == 1:
+            return ProviderResponse(
+                status="succeeded",
+                actions=[
+                    {
+                        "type": "tool_call",
+                        "action": "run_command",
+                        "reason": "verify",
+                        "args": {"command": step_input.verification_commands[0]},
+                    }
+                ],
+            )
+        return ProviderResponse(
+            status="succeeded",
+            actions=[
+                {
+                    "type": "final_response",
+                    "status": "completed",
+                    "summary": "turn complete",
+                }
+            ],
+        )
+
+
+def test_agent_session_run_turn_records_review_and_tool_summaries(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    repo_path = tmp_path / "repo"
+    init_session_repo(repo_path)
+    provider = SessionFakeProvider()
+    session = AgentSession(repo_path=repo_path, provider=provider)
+
+    turn = session.run_turn(
+        problem_statement="run verification",
+        verification_commands=["python -c 'raise SystemExit(0)'"],
+    )
+
+    assert isinstance(turn, AgentSessionTurn)
+    assert turn.index == 1
+    assert turn.problem_statement == "run verification"
+    assert turn.result.status == "completed"
+    assert turn.review.verification_status == "passed"
+    assert len(turn.tool_summaries) == 1
+    assert turn.tool_summaries[0].action == "run_command"
+    assert turn.tool_summaries[0].status == "succeeded"
+    assert session.turns == [turn]
+    assert provider.calls[0].problem_statement == "run verification"
 
 
 def test_attempt_record_is_created_for_failed_patch_apply() -> None:

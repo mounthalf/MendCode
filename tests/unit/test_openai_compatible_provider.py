@@ -63,6 +63,19 @@ def test_extract_action_json_accepts_single_json_fence() -> None:
     }
 
 
+def test_extract_action_json_accepts_reasoning_preamble() -> None:
+    text = (
+        "<think>Need to return a JSON action.</think>\n\n"
+        '{"type":"final_response","status":"completed","summary":"done"}'
+    )
+
+    assert extract_action_json(text) == {
+        "type": "final_response",
+        "status": "completed",
+        "summary": "done",
+    }
+
+
 def test_openai_compatible_provider_returns_action_from_fake_client() -> None:
     client = FakeClient(
         '{"type":"tool_call","action":"repo_status","reason":"inspect","args":{}}'

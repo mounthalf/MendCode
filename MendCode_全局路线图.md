@@ -254,23 +254,23 @@ mendcode
 交付：
 
 - [ ] 启动轻量 repo scan
-- [ ] 聊天输入
+- [x] 聊天输入
 - [x] Guided Mode 默认权限
-- [ ] 工具调用摘要展示
+- [x] 工具调用摘要展示
 - [ ] 详情展开
-- [ ] 工程审查收尾
+- [x] 工程审查收尾
 - [ ] view diff / logs / trace / apply / discard
 
 停手点：
 
-- [ ] 用户可以在 TUI 中描述一个 pytest 失败问题
+- [x] 用户可以在 TUI 中描述一个 pytest 失败问题
 - [x] Agent 能通过测试驱动 action 完成一次 worktree 内修复尝试
 - [ ] 用户能基于审查摘要决定 apply 或 discard
 
 当前接续点：
 
-- [ ] `AgentSession.run_turn()` 单轮会话抽象
-- [ ] `session.turns` 持续追加，为后续多轮聊天保留状态
+- [x] `AgentSession.run_turn()` 单轮会话抽象
+- [x] `session.turns` 持续追加，为后续多轮聊天保留状态
 
 ---
 

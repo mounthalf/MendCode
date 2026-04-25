@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import typer
@@ -7,13 +8,176 @@ from rich.table import Table
 from app.agent.loop import AgentLoopInput, run_agent_loop
 from app.agent.provider import ScriptedAgentProvider
 from app.agent.provider_factory import ProviderConfigurationError, build_agent_provider
+from app.agent.session import AgentSession, AgentSessionTurn
 from app.config.settings import get_settings
 from app.core.paths import ensure_data_directories
-from app.orchestrator.failure_parser import extract_failure_insight
+from app.orchestrator.failure_parser import FailureInsight, extract_failure_insight
 from app.schemas.verification import VerificationCommandResult
 
-app = typer.Typer(help="MendCode CLI")
+app = typer.Typer(help="MendCode CLI", invoke_without_command=True)
 console = Console()
+
+
+def _git_value(repo_path: Path, args: list[str], fallback: str) -> str:
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return fallback
+    if completed.returncode != 0:
+        return fallback
+    return completed.stdout.strip() or fallback
+
+
+def _render_tui_header(repo_path: Path) -> None:
+    status_lines = _git_value(repo_path, ["status", "--short"], "").splitlines()
+    branch = _git_value(repo_path, ["branch", "--show-current"], "unknown")
+    status = f"dirty, {len(status_lines)} modified" if status_lines else "clean"
+    console.print("MendCode")
+    console.print(f"repo: {repo_path}")
+    console.print(f"branch: {branch}")
+    console.print(f"status: {status}")
+    console.print("mode: guided")
+
+
+def _render_turn(turn: AgentSessionTurn) -> None:
+    tools = Table(title="Tool Summary")
+    tools.add_column("Step")
+    tools.add_column("Action")
+    tools.add_column("Status")
+    tools.add_column("Summary")
+    for item in turn.tool_summaries:
+        tools.add_row(str(item.index), item.action, item.status, item.summary)
+    console.print(tools)
+
+    review = Table(title="Review")
+    review.add_column("Field")
+    review.add_column("Value")
+    review.add_row("status", turn.review.status)
+    review.add_row("summary", turn.result.summary)
+    review.add_row("verification_status", turn.review.verification_status)
+    review.add_row("workspace_path", turn.review.workspace_path or "")
+    review.add_row("trace_path", turn.review.trace_path or "")
+    review.add_row("changed_files", ", ".join(turn.review.changed_files))
+    review.add_row("recommended_actions", ", ".join(turn.review.recommended_actions))
+    console.print(review)
+
+
+def _command_results_from_steps(turn: AgentSessionTurn) -> list[VerificationCommandResult]:
+    return [
+        VerificationCommandResult.model_validate(step.observation.payload)
+        for step in turn.result.steps
+        if step.action.type == "tool_call"
+        and getattr(step.action, "action", None) == "run_command"
+        and "command" in step.observation.payload
+    ]
+
+
+def _run_location_summary(
+    *,
+    turn: AgentSessionTurn,
+    insight: FailureInsight | None,
+    problem_statement: str,
+    settings,
+):
+    if insight is None or turn.result.workspace_path is None:
+        return None
+    location_response = ScriptedAgentProvider().plan_failure_location_actions(
+        failed_node=insight.failed_node,
+        file_path=insight.file_path,
+        test_name=insight.test_name,
+    )
+    if location_response.status != "succeeded":
+        return None
+    return run_agent_loop(
+        AgentLoopInput(
+            repo_path=Path(turn.result.workspace_path),
+            problem_statement=problem_statement,
+            actions=location_response.actions,
+            step_budget=len(location_response.actions),
+            use_worktree=False,
+        ),
+        settings,
+    )
+
+
+def _render_failure_insight(
+    insight: FailureInsight | None,
+    location_result,
+) -> None:
+    if insight is None and location_result is None:
+        return
+    table = Table(title="Failure Insight")
+    table.add_column("Field")
+    table.add_column("Value")
+    if insight is not None:
+        table.add_row("failed_node", insight.failed_node or "")
+        table.add_row("file_path", insight.file_path or "")
+        table.add_row("test_name", insight.test_name or "")
+        table.add_row("error_summary", insight.error_summary)
+    if location_result is not None:
+        table.add_row("location_status", location_result.status)
+        table.add_row(
+            "location_steps",
+            ", ".join(
+                f"{getattr(step.action, 'action', step.action.type)}:{step.observation.status}"
+                for step in location_result.steps
+                if step.action.type == "tool_call"
+            ),
+        )
+    console.print(table)
+
+
+@app.callback()
+def tui_entry(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is not None:
+        return
+
+    settings = get_settings()
+    ensure_data_directories(settings)
+    repo_path = Path.cwd().resolve()
+    _render_tui_header(repo_path)
+    problem_statement = typer.prompt("Type your task")
+    verification_command = typer.prompt("Verification command")
+    if not verification_command.strip():
+        table = Table(title="MendCode")
+        table.add_column("Field")
+        table.add_column("Value")
+        table.add_row("status", "failed")
+        table.add_row("error", "Verification command is required")
+        console.print(table)
+        raise typer.Exit(code=1)
+
+    try:
+        provider = build_agent_provider(settings)
+    except ProviderConfigurationError as exc:
+        table = Table(title="Provider Configuration")
+        table.add_column("Field")
+        table.add_column("Value")
+        table.add_row("status", "failed")
+        table.add_row("error", str(exc))
+        console.print(table)
+        raise typer.Exit(code=1)
+
+    session = AgentSession(repo_path=repo_path, provider=provider, settings=settings)
+    turn = session.run_turn(
+        problem_statement=problem_statement,
+        verification_commands=[verification_command],
+    )
+    _render_turn(turn)
+    insight = extract_failure_insight(_command_results_from_steps(turn))
+    location_result = _run_location_summary(
+        turn=turn,
+        insight=insight,
+        problem_statement=problem_statement,
+        settings=settings,
+    )
+    _render_failure_insight(insight, location_result)
 
 
 @app.command()
