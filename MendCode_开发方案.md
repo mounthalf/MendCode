@@ -41,6 +41,7 @@ mendcode
 - [x] 最小 `AgentLoop`
 - [x] `ScriptedAgentProvider`，用于在真实 LLM provider 前逐步生成 MendCode actions
 - [x] Provider-driven Agent loop：每步基于 observation history 请求下一条 action
+- [x] OpenAI-compatible JSON Action provider
 - [x] worktree 内 patch proposal 执行
 - [x] verification gate：最后一次关键 observation 未成功时不能 completed
 - [x] Permission Gate
@@ -73,8 +74,9 @@ mendcode
 
 距离 TUI Agent MVP 还缺：
 
-- [ ] LLM Provider 抽象
-- [ ] OpenAI / Anthropic / OpenAI-compatible adapter
+- [x] LLM Provider 抽象底座
+- [x] OpenAI-compatible JSON Action adapter
+- [ ] OpenAI / Anthropic 原生 adapter
 - [x] Provider 错误降级为 observation
 - [x] Provider-driven 动态 tool-use loop 底座
 - [ ] 真实模型驱动的动态 tool-use loop
@@ -210,11 +212,11 @@ mendcode
 
 交付：
 
-- [ ] Provider config
+- [x] Provider env config
 - [ ] OpenAI adapter
 - [ ] Anthropic adapter
-- [ ] OpenAI-compatible adapter
-- [ ] JSON action fallback
+- [x] OpenAI-compatible adapter
+- [x] JSON action fallback
 - [x] provider error observation
 - [x] provider step input / observation history
 
@@ -224,7 +226,7 @@ mendcode
 - [x] 业务层可消费 provider 结构化响应并处理 provider failure observation
 - [x] provider failure 可降级为 failed observation
 - [x] 切换 provider 不影响 Agent loop 主体
-- [ ] 业务层只消费真实 provider 归一化后的 MendCode Action
+- [x] 业务层只消费真实 provider 归一化后的 MendCode Action
 - [ ] API key 不写入项目仓库
 
 ---

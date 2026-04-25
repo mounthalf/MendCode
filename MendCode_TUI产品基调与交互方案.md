@@ -220,7 +220,7 @@ MendCode 使用统一 LLM Provider 抽象。
 
 - [ ] OpenAI API
 - [ ] Anthropic API
-- [ ] OpenAI-compatible API
+- [x] OpenAI-compatible API
 
 国产模型提供商优先通过 `openai-compatible` 支持，不为每个厂商单独写业务逻辑。
 
@@ -231,6 +231,8 @@ openai
 anthropic
 openai-compatible
 ```
+
+当前已落地的是 `openai-compatible` 的 JSON Action provider：模型每步返回一个 MendCode Action JSON 对象，MendCode 负责 schema 校验、权限判断、工具执行和 trace。OpenAI / Anthropic 原生 tool calling 适配仍未完成。
 
 推荐配置优先级：
 

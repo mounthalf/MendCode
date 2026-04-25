@@ -5,6 +5,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from app.agent.provider import AgentProviderStepInput, ProviderResponse
 from app.cli.main import app
 
 runner = CliRunner()
@@ -45,6 +46,48 @@ def init_git_repo(path: Path) -> Path:
         text=True,
     )
     return repo_path
+
+
+class FakeOpenAICompatibleProvider:
+    def __init__(self) -> None:
+        self.calls: list[AgentProviderStepInput] = []
+
+    def next_action(self, step_input: AgentProviderStepInput) -> ProviderResponse:
+        self.calls.append(step_input)
+        if len(self.calls) == 1:
+            return ProviderResponse(
+                status="succeeded",
+                actions=[
+                    {
+                        "type": "tool_call",
+                        "action": "repo_status",
+                        "reason": "inspect repo",
+                        "args": {},
+                    }
+                ],
+            )
+        if len(self.calls) == 2:
+            return ProviderResponse(
+                status="succeeded",
+                actions=[
+                    {
+                        "type": "tool_call",
+                        "action": "run_command",
+                        "reason": "run verification",
+                        "args": {"command": step_input.verification_commands[0]},
+                    }
+                ],
+            )
+        return ProviderResponse(
+            status="succeeded",
+            actions=[
+                {
+                    "type": "final_response",
+                    "status": "completed",
+                    "summary": "fake openai-compatible provider completed",
+                }
+            ],
+        )
 
 
 def test_health_command_reports_agent_directories(monkeypatch, tmp_path: Path) -> None:
@@ -147,6 +190,67 @@ def test_fix_command_reports_provider_failure_without_agent_loop(
     assert "provider failed" in result.stdout.lower()
     assert "at least one verification command is required" in result.stdout
     assert "agent-" not in result.stdout
+
+
+def test_fix_command_reports_provider_configuration_error(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("MENDCODE_PROVIDER", "openai-compatible")
+    monkeypatch.delenv("MENDCODE_MODEL", raising=False)
+    monkeypatch.delenv("MENDCODE_BASE_URL", raising=False)
+    monkeypatch.delenv("MENDCODE_API_KEY", raising=False)
+    monkeypatch.setattr("app.cli.main.console.width", 200, raising=False)
+    repo_path = init_git_repo(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "fix",
+            "修复 pytest 失败",
+            "--test",
+            f"{PYTHON} -c \"raise SystemExit(0)\"",
+            "--repo",
+            str(repo_path),
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code != 0
+    assert "Provider Configuration" in result.stdout
+    assert "MENDCODE_MODEL" in result.stdout
+    assert "agent-" not in result.stdout
+
+
+def test_fix_command_can_use_openai_compatible_provider_without_network(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("MENDCODE_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MENDCODE_MODEL", "test-model")
+    monkeypatch.setenv("MENDCODE_BASE_URL", "https://example.test/v1")
+    monkeypatch.setenv("MENDCODE_API_KEY", "secret-key")
+    monkeypatch.setattr("app.cli.main.console.width", 200, raising=False)
+    fake_provider = FakeOpenAICompatibleProvider()
+    monkeypatch.setattr("app.cli.main.build_agent_provider", lambda settings: fake_provider)
+    repo_path = init_git_repo(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "fix",
+            "修复 pytest 失败",
+            "--test",
+            f"{PYTHON} -c \"raise SystemExit(0)\"",
+            "--repo",
+            str(repo_path),
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code == 0
+    assert "fake openai-compatible provider completed" in result.stdout
+    assert len(fake_provider.calls) == 3
+    assert fake_provider.calls[0].verification_commands
 
 
 def test_task_command_is_no_longer_registered() -> None:

@@ -5,7 +5,8 @@ from rich.console import Console
 from rich.table import Table
 
 from app.agent.loop import AgentLoopInput, run_agent_loop
-from app.agent.provider import AgentProviderInput, ScriptedAgentProvider
+from app.agent.provider import ScriptedAgentProvider
+from app.agent.provider_factory import ProviderConfigurationError, build_agent_provider
 from app.config.settings import get_settings
 from app.core.paths import ensure_data_directories
 from app.orchestrator.failure_parser import extract_failure_insight
@@ -52,22 +53,26 @@ def fix_problem(
 ) -> None:
     settings = get_settings()
     ensure_data_directories(settings)
-    provider = ScriptedAgentProvider()
-    provider_response = provider.plan_actions(
-        AgentProviderInput(
-            problem_statement=problem_statement,
-            verification_commands=test_commands,
-        )
-    )
-    if provider_response.status != "succeeded":
+
+    if not test_commands:
         table = Table(title="Agent Fix")
         table.add_column("Field")
         table.add_column("Value")
         table.add_row("problem_statement", problem_statement)
         table.add_row("status", "failed")
-        if provider_response.observation is not None:
-            table.add_row("summary", provider_response.observation.summary)
-            table.add_row("error", provider_response.observation.error_message or "")
+        table.add_row("summary", "Provider failed")
+        table.add_row("error", "at least one verification command is required")
+        console.print(table)
+        raise typer.Exit(code=1)
+
+    try:
+        provider = build_agent_provider(settings)
+    except ProviderConfigurationError as exc:
+        table = Table(title="Provider Configuration")
+        table.add_column("Field")
+        table.add_column("Value")
+        table.add_row("status", "failed")
+        table.add_row("error", str(exc))
         console.print(table)
         raise typer.Exit(code=1)
 
@@ -96,7 +101,8 @@ def fix_problem(
     insight = extract_failure_insight(command_results)
     location_result = None
     if insight is not None and result.workspace_path is not None:
-        location_response = provider.plan_failure_location_actions(
+        location_provider = ScriptedAgentProvider()
+        location_response = location_provider.plan_failure_location_actions(
             failed_node=insight.failed_node,
             file_path=insight.file_path,
             test_name=insight.test_name,

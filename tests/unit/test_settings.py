@@ -47,6 +47,40 @@ def test_settings_exposes_workspace_configuration(monkeypatch, tmp_path):
     assert settings.cleanup_success_workspace is False
 
 
+def test_settings_default_provider_is_scripted(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.delenv("MENDCODE_PROVIDER", raising=False)
+    monkeypatch.delenv("MENDCODE_MODEL", raising=False)
+    monkeypatch.delenv("MENDCODE_BASE_URL", raising=False)
+    monkeypatch.delenv("MENDCODE_API_KEY", raising=False)
+    monkeypatch.delenv("MENDCODE_PROVIDER_TIMEOUT_SECONDS", raising=False)
+
+    settings = get_settings()
+
+    assert settings.provider == "scripted"
+    assert settings.provider_model is None
+    assert settings.provider_base_url is None
+    assert settings.provider_api_key is None
+    assert settings.provider_timeout_seconds == 60
+
+
+def test_settings_reads_openai_compatible_provider_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("MENDCODE_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("MENDCODE_MODEL", "test-model")
+    monkeypatch.setenv("MENDCODE_BASE_URL", "https://example.test/v1")
+    monkeypatch.setenv("MENDCODE_API_KEY", "secret-key")
+    monkeypatch.setenv("MENDCODE_PROVIDER_TIMEOUT_SECONDS", "12")
+
+    settings = get_settings()
+
+    assert settings.provider == "openai-compatible"
+    assert settings.provider_model == "test-model"
+    assert settings.provider_base_url == "https://example.test/v1"
+    assert settings.provider_api_key == "secret-key"
+    assert settings.provider_timeout_seconds == 12
+
+
 def test_ensure_data_directories_creates_workspace_root(monkeypatch, tmp_path):
     monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
     settings = get_settings()

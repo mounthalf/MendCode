@@ -181,11 +181,11 @@ Phase A 已完成。
 
 - [x] `ScriptedAgentProvider` provider 边界
 - [x] provider step input / observation history
-- [ ] Provider 配置 schema
+- [x] Provider env 配置 schema
 - [ ] OpenAI adapter
 - [ ] Anthropic adapter
-- [ ] OpenAI-compatible adapter
-- [ ] JSON Action fallback
+- [x] OpenAI-compatible adapter
+- [x] JSON Action fallback
 - [x] provider 错误降级
 - [x] provider-driven loop 错误降级
 
@@ -194,7 +194,7 @@ Phase A 已完成。
 - [x] CLI 不直接硬编码 action 列表
 - [x] 业务层可处理 provider failure observation
 - [x] provider 可基于 observation history 逐步返回下一条 MendCode Action
-- [ ] 业务层只处理真实 provider 归一化后的 MendCode Action，不直接依赖厂商 tool calling 格式
+- [x] 业务层只处理真实 provider 归一化后的 MendCode Action，不直接依赖厂商 tool calling 格式
 
 ### Phase D：Tool Execution 与检索增强
 

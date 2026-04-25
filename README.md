@@ -9,7 +9,7 @@ MendCode 的目标形态是终端 TUI 工作台：用户输入 `mendcode` 进入
 - Python project skeleton with `pyproject.toml`
 - CLI health check
 - Minimal Agent Action Loop for tool calls, observations, permission decisions, and trace output
-- Scripted provider boundary for generating MendCode actions before real LLM adapters land
+- Provider-driven Agent loop with scripted default and optional OpenAI-compatible JSON Action provider
 - Transitional `mendcode fix "<problem>" --test "<command>"` entry wired through the Agent loop
 - Command-policy guarded verification execution with timeout and trace output
 - Pytest-style failure insight extraction for failed verification output
@@ -69,4 +69,15 @@ python -m app.cli.main health
 python -m app.cli.main fix "pytest 失败了，请定位并修复" --repo . --test "python -m pytest -q"
 ```
 
-`fix` currently uses a scripted provider to generate MendCode actions, then runs the Agent loop in an isolated git worktree over repository status, project detection, and the supplied verification command. It extracts pytest-style failure details, records trace output, and reports the worktree path. Patch proposal execution and diff summary are available inside the Agent loop and will be wired to model-driven repair next.
+`fix` defaults to the scripted provider, then runs the Agent loop in an isolated git worktree over repository status, project detection, and the supplied verification command. It extracts pytest-style failure details, records trace output, and reports the worktree path. Patch proposal execution and diff summary are available inside the Agent loop and will be wired to model-driven repair next.
+
+To try an OpenAI-compatible JSON Action provider, configure:
+
+```bash
+export MENDCODE_PROVIDER=openai-compatible
+export MENDCODE_MODEL="<model>"
+export MENDCODE_BASE_URL="<base-url>"
+export MENDCODE_API_KEY="<key>"
+```
+
+This provider path asks the model for one MendCode Action JSON object per step. It does not use native tool-calling formats yet.
