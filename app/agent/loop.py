@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -9,6 +10,7 @@ from app.agent.permission import (
     build_confirmation_request,
     decide_permission,
 )
+from app.agent.provider import AgentObservationRecord, AgentProviderStepInput
 from app.config.settings import Settings
 from app.schemas.agent_action import (
     FinalResponseAction,
@@ -32,11 +34,14 @@ AgentLoopStatus = str
 
 
 class AgentLoopInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     repo_path: Path
     problem_statement: str
-    actions: list[dict[str, object]]
+    actions: list[dict[str, object]] = Field(default_factory=list)
+    provider: Any | None = None
+    verification_commands: list[str] = Field(default_factory=list)
+    provider_context: str | None = None
     permission_mode: PermissionMode = "guided"
     step_budget: int = Field(default=12, ge=1)
     use_worktree: bool = False
@@ -60,6 +65,15 @@ class AgentLoopResult(BaseModel):
     trace_path: str | None
     workspace_path: str | None = None
     steps: list[AgentStep] = Field(default_factory=list)
+
+
+class _HandledAction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stop: bool
+    status: AgentLoopStatus
+    summary: str
+    step: AgentStep
 
 
 def _tool_result_to_observation(result: ToolResult) -> Observation:
@@ -286,6 +300,99 @@ def _record_step(
     )
 
 
+def _handle_action_payload(
+    *,
+    payload: dict[str, object],
+    index: int,
+    workspace_path: Path,
+    settings: Settings,
+    permission_mode: PermissionMode,
+) -> _HandledAction:
+    try:
+        action = parse_mendcode_action(payload)
+    except ValidationError as exc:
+        observation = build_invalid_action_observation(
+            payload=payload,
+            error_message=str(exc),
+        )
+        action = FinalResponseAction(
+            type="final_response",
+            status="failed",
+            summary="Invalid MendCode action",
+        )
+        return _HandledAction(
+            stop=True,
+            status="failed",
+            summary=observation.summary,
+            step=AgentStep(index=index, action=action, observation=observation),
+        )
+
+    if isinstance(action, ToolCallAction):
+        decision = decide_permission(action, permission_mode)
+        observation: Observation
+        if decision.status == "confirm":
+            confirmation = build_confirmation_request(action=action, decision=decision)
+            observation = Observation(
+                status="rejected",
+                summary="User confirmation required",
+                payload={"permission_decision": decision.model_dump(mode="json")},
+                error_message=decision.reason,
+            )
+            return _HandledAction(
+                stop=True,
+                status="needs_user_confirmation",
+                summary=observation.summary,
+                step=AgentStep(index=index, action=confirmation, observation=observation),
+            )
+        if decision.status == "deny":
+            observation = Observation(
+                status="rejected",
+                summary="Tool denied by permission gate",
+                payload={"permission_decision": decision.model_dump(mode="json")},
+                error_message=decision.reason,
+            )
+        else:
+            observation = _execute_tool_call(
+                action=action,
+                repo_path=workspace_path,
+                settings=settings,
+            )
+        return _HandledAction(
+            stop=False,
+            status="failed",
+            summary="Agent loop ended without final response",
+            step=AgentStep(index=index, action=action, observation=observation),
+        )
+
+    if isinstance(action, PatchProposalAction):
+        observation = _apply_patch_proposal(action, workspace_path)
+        return _HandledAction(
+            stop=False,
+            status="failed",
+            summary="Agent loop ended without final response",
+            step=AgentStep(index=index, action=action, observation=observation),
+        )
+
+    observation = Observation(
+        status="succeeded",
+        summary="Recorded agent action",
+        payload=action.model_dump(mode="json"),
+    )
+    if isinstance(action, FinalResponseAction):
+        return _HandledAction(
+            stop=True,
+            status=action.status,
+            summary=action.summary,
+            step=AgentStep(index=index, action=action, observation=observation),
+        )
+    return _HandledAction(
+        stop=False,
+        status="failed",
+        summary="Agent loop ended without final response",
+        step=AgentStep(index=index, action=action, observation=observation),
+    )
+
+
 def run_agent_loop(loop_input: AgentLoopInput, settings: Settings) -> AgentLoopResult:
     recorder = TraceRecorder(settings.traces_dir)
     run_id = f"agent-{uuid4().hex[:12]}"
@@ -337,102 +444,27 @@ def run_agent_loop(loop_input: AgentLoopInput, settings: Settings) -> AgentLoopR
     steps: list[AgentStep] = []
     status = "failed"
     summary = "Agent loop ended without final response"
+    observation_history: list[AgentObservationRecord] = []
 
-    for index, payload in enumerate(loop_input.actions[: loop_input.step_budget], start=1):
-        try:
-            action = parse_mendcode_action(payload)
-        except ValidationError as exc:
-            observation = build_invalid_action_observation(
-                payload=payload,
-                error_message=str(exc),
-            )
-            action = FinalResponseAction(
-                type="final_response",
-                status="failed",
-                summary="Invalid MendCode action",
-            )
-            steps.append(AgentStep(index=index, action=action, observation=observation))
-            trace_path = _record_step(
-                recorder=recorder,
-                run_id=run_id,
-                index=index,
-                action=action,
-                observation=observation,
-            )
-            summary = observation.summary
-            status = "failed"
-            break
-
-        if isinstance(action, ToolCallAction):
-            decision = decide_permission(action, loop_input.permission_mode)
-            if decision.status == "confirm":
-                confirmation = build_confirmation_request(action=action, decision=decision)
-                observation = Observation(
-                    status="rejected",
-                    summary="User confirmation required",
-                    payload={"permission_decision": decision.model_dump(mode="json")},
-                    error_message=decision.reason,
-                )
-                steps.append(AgentStep(index=index, action=confirmation, observation=observation))
-                trace_path = _record_step(
-                    recorder=recorder,
-                    run_id=run_id,
-                    index=index,
-                    action=confirmation,
-                    observation=observation,
-                )
-                summary = observation.summary
-                status = "needs_user_confirmation"
-                break
-            if decision.status == "deny":
-                observation = Observation(
-                    status="rejected",
-                    summary="Tool denied by permission gate",
-                    payload={"permission_decision": decision.model_dump(mode="json")},
-                    error_message=decision.reason,
-                )
-            else:
-                observation = _execute_tool_call(
-                    action=action,
-                    repo_path=workspace_path,
-                    settings=settings,
-                )
-            steps.append(AgentStep(index=index, action=action, observation=observation))
-            trace_path = _record_step(
-                recorder=recorder,
-                run_id=run_id,
-                index=index,
-                action=action,
-                observation=observation,
-            )
-            continue
-
-        if isinstance(action, PatchProposalAction):
-            observation = _apply_patch_proposal(action, workspace_path)
-            steps.append(AgentStep(index=index, action=action, observation=observation))
-            trace_path = _record_step(
-                recorder=recorder,
-                run_id=run_id,
-                index=index,
-                action=action,
-                observation=observation,
-            )
-            continue
-
-        observation = Observation(
-            status="succeeded",
-            summary="Recorded agent action",
-            payload=action.model_dump(mode="json"),
-        )
-        steps.append(AgentStep(index=index, action=action, observation=observation))
+    def record_handled_action(handled: _HandledAction) -> None:
+        nonlocal trace_path
+        steps.append(handled.step)
         trace_path = _record_step(
             recorder=recorder,
             run_id=run_id,
-            index=index,
-            action=action,
-            observation=observation,
+            index=handled.step.index,
+            action=handled.step.action,
+            observation=handled.step.observation,
         )
-        if isinstance(action, FinalResponseAction):
+        observation_history.append(
+            AgentObservationRecord(
+                action=handled.step.action,
+                observation=handled.step.observation,
+            )
+        )
+
+    def apply_final_response_gate(handled: _HandledAction) -> tuple[AgentLoopStatus, str]:
+        if isinstance(handled.step.action, FinalResponseAction):
             last_non_final_observation = next(
                 (
                     step.observation
@@ -442,16 +474,94 @@ def run_agent_loop(loop_input: AgentLoopInput, settings: Settings) -> AgentLoopR
                 None,
             )
             if (
-                action.status == "completed"
+                handled.step.action.status == "completed"
                 and last_non_final_observation is not None
                 and last_non_final_observation.status != "succeeded"
             ):
+                return "failed", "Agent loop ended with failed observations"
+        return handled.status, handled.summary
+
+    if loop_input.provider is not None:
+        for index in range(1, loop_input.step_budget + 1):
+            provider_response = loop_input.provider.next_action(
+                AgentProviderStepInput(
+                    problem_statement=loop_input.problem_statement,
+                    verification_commands=loop_input.verification_commands,
+                    step_index=index,
+                    remaining_steps=loop_input.step_budget - index,
+                    observations=observation_history,
+                    context=loop_input.provider_context,
+                )
+            )
+            if provider_response.status != "succeeded":
+                observation = provider_response.observation or _failed_observation(
+                    "Provider failed",
+                    "provider failed without observation",
+                )
+                action = FinalResponseAction(
+                    type="final_response",
+                    status="failed",
+                    summary="Provider failed",
+                )
+                handled = _HandledAction(
+                    stop=True,
+                    status="failed",
+                    summary=observation.summary,
+                    step=AgentStep(index=index, action=action, observation=observation),
+                )
+                record_handled_action(handled)
                 status = "failed"
-                summary = "Agent loop ended with failed observations"
-            else:
-                status = action.status
-                summary = action.summary
-            break
+                summary = observation.summary
+                break
+            if len(provider_response.actions) != 1:
+                payload = {"actions": provider_response.actions}
+                observation = build_invalid_action_observation(
+                    payload=payload,
+                    error_message="provider step responses must include exactly one action",
+                )
+                action = FinalResponseAction(
+                    type="final_response",
+                    status="failed",
+                    summary="Invalid MendCode action",
+                )
+                handled = _HandledAction(
+                    stop=True,
+                    status="failed",
+                    summary=observation.summary,
+                    step=AgentStep(index=index, action=action, observation=observation),
+                )
+                record_handled_action(handled)
+                status = "failed"
+                summary = observation.summary
+                break
+
+            handled = _handle_action_payload(
+                payload=provider_response.actions[0],
+                index=index,
+                workspace_path=workspace_path,
+                settings=settings,
+                permission_mode=loop_input.permission_mode,
+            )
+            record_handled_action(handled)
+            if handled.stop:
+                status, summary = apply_final_response_gate(handled)
+                break
+        else:
+            status = "failed"
+            summary = "Agent loop exhausted step budget without final response"
+    else:
+        for index, payload in enumerate(loop_input.actions[: loop_input.step_budget], start=1):
+            handled = _handle_action_payload(
+                payload=payload,
+                index=index,
+                workspace_path=workspace_path,
+                settings=settings,
+                permission_mode=loop_input.permission_mode,
+            )
+            record_handled_action(handled)
+            if handled.stop:
+                status, summary = apply_final_response_gate(handled)
+                break
 
     trace_path = recorder.record(
         TraceEvent(

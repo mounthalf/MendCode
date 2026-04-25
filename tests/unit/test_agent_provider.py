@@ -1,4 +1,11 @@
-from app.agent.provider import AgentProviderInput, ProviderResponse, ScriptedAgentProvider
+from app.agent.provider import (
+    AgentObservationRecord,
+    AgentProviderInput,
+    AgentProviderStepInput,
+    ProviderResponse,
+    ScriptedAgentProvider,
+)
+from app.schemas.agent_action import Observation, ToolCallAction
 
 
 def test_scripted_provider_builds_initial_fix_actions() -> None:
@@ -39,6 +46,82 @@ def test_scripted_provider_builds_initial_fix_actions() -> None:
             },
         ],
     )
+
+
+def test_scripted_provider_returns_initial_actions_one_step_at_a_time() -> None:
+    provider = ScriptedAgentProvider()
+
+    first = provider.next_action(
+        AgentProviderStepInput(
+            problem_statement="fix tests",
+            verification_commands=["python -m pytest -q"],
+            step_index=1,
+            remaining_steps=4,
+            observations=[],
+        )
+    )
+    second = provider.next_action(
+        AgentProviderStepInput(
+            problem_statement="fix tests",
+            verification_commands=["python -m pytest -q"],
+            step_index=2,
+            remaining_steps=3,
+            observations=[],
+        )
+    )
+    third = provider.next_action(
+        AgentProviderStepInput(
+            problem_statement="fix tests",
+            verification_commands=["python -m pytest -q"],
+            step_index=3,
+            remaining_steps=2,
+            observations=[],
+        )
+    )
+
+    assert first.status == "succeeded"
+    assert first.action is not None
+    assert first.action["type"] == "tool_call"
+    assert first.action["action"] == "repo_status"
+    assert second.action is not None
+    assert second.action["action"] == "detect_project"
+    assert third.action is not None
+    assert third.action["action"] == "run_command"
+    assert third.action["args"] == {"command": "python -m pytest -q"}
+
+
+def test_scripted_provider_returns_final_response_after_scripted_steps() -> None:
+    provider = ScriptedAgentProvider()
+
+    response = provider.next_action(
+        AgentProviderStepInput(
+            problem_statement="fix tests",
+            verification_commands=["python -m pytest -q"],
+            step_index=4,
+            remaining_steps=1,
+            observations=[
+                AgentObservationRecord(
+                    action=ToolCallAction(
+                        type="tool_call",
+                        action="run_command",
+                        reason="run verification",
+                        args={"command": "python -m pytest -q"},
+                    ),
+                    observation=Observation(
+                        status="failed",
+                        summary="Ran command: python -m pytest -q",
+                        payload={"status": "failed"},
+                        error_message="tests failed",
+                    ),
+                )
+            ],
+        )
+    )
+
+    assert response.status == "succeeded"
+    assert response.action is not None
+    assert response.action["type"] == "final_response"
+    assert response.action["status"] == "completed"
 
 
 def test_provider_response_rejects_success_without_actions() -> None:

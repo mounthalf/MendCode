@@ -39,7 +39,8 @@ mendcode
 - [x] CLI 基础命令
 - [x] `MendCodeAction` / `Observation` 动作协议
 - [x] 最小 `AgentLoop`
-- [x] `ScriptedAgentProvider`，用于在真实 LLM provider 前固定生成 MendCode actions
+- [x] `ScriptedAgentProvider`，用于在真实 LLM provider 前逐步生成 MendCode actions
+- [x] Provider-driven Agent loop：每步基于 observation history 请求下一条 action
 - [x] worktree 内 patch proposal 执行
 - [x] verification gate：最后一次关键 observation 未成功时不能 completed
 - [x] Permission Gate
@@ -75,6 +76,7 @@ mendcode
 - [ ] LLM Provider 抽象
 - [ ] OpenAI / Anthropic / OpenAI-compatible adapter
 - [x] Provider 错误降级为 observation
+- [x] Provider-driven 动态 tool-use loop 底座
 - [ ] 真实模型驱动的动态 tool-use loop
 - [x] patch proposal schema
 - [ ] 真实 LLM 输出 patch proposal
@@ -204,7 +206,7 @@ mendcode
 
 支持 OpenAI、Anthropic、OpenAI-compatible，并统一输出 MendCode Action。
 
-当前先保留 `ScriptedAgentProvider` 作为 provider 边界，CLI 不再直接硬编码 action 列表。后续真实 provider 只需要替换 action 生成层，不改 Agent loop 主体。
+当前先保留 `ScriptedAgentProvider` 作为 provider 边界，CLI 不再直接硬编码 action 列表。Agent loop 已能每步把 observation history 交回 provider 并请求下一条 MendCode Action。后续真实 provider 只需要替换 action 生成层，不改 Agent loop 主体。
 
 交付：
 
@@ -214,13 +216,15 @@ mendcode
 - [ ] OpenAI-compatible adapter
 - [ ] JSON action fallback
 - [x] provider error observation
+- [x] provider step input / observation history
 
 验收：
 
 - [x] CLI 只消费 provider 生成的 MendCode actions
 - [x] 业务层可消费 provider 结构化响应并处理 provider failure observation
+- [x] provider failure 可降级为 failed observation
+- [x] 切换 provider 不影响 Agent loop 主体
 - [ ] 业务层只消费真实 provider 归一化后的 MendCode Action
-- [ ] 切换 provider 不影响 Agent loop
 - [ ] API key 不写入项目仓库
 
 ---
@@ -234,6 +238,7 @@ mendcode
 交付：
 
 - [x] Agent loop runner
+- [x] Provider-driven next-action loop
 - [x] step budget
 - [x] worktree execution context
 - [x] observation history

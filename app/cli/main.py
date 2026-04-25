@@ -74,7 +74,8 @@ def fix_problem(
     loop_input = AgentLoopInput(
         repo_path=repo.resolve(),
         problem_statement=problem_statement,
-        actions=provider_response.actions,
+        provider=provider,
+        verification_commands=test_commands,
         step_budget=max_attempts + 3,
         use_worktree=True,
     )

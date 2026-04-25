@@ -266,6 +266,7 @@ MendCode 不采用“先生成完整计划再机械执行”的模式。
 也就是：
 
 - [ ] 模型决定下一步想做什么
+- [x] Provider-driven loop 每步请求下一条 MendCode Action
 - [x] MendCode 判断动作是否允许
 - [x] MendCode 执行工具
 - [x] MendCode 记录 trace
@@ -441,6 +442,7 @@ Custom Mode：
 - [ ] 轻量 repo scan
 - [ ] 聊天输入
 - [x] Guided permission mode
+- [x] Provider-driven Action loop 底座
 - [ ] LLM Action loop
 - [ ] 工具调用摘要展示
 - [x] 工具：`repo_status` / `detect_project` / `run_command` / `read_file` / `search_code`

@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from app.agent.loop import AgentLoopInput, run_agent_loop
+from app.agent.provider import AgentProviderStepInput, ProviderResponse
 from app.config.settings import Settings
 
 PYTHON = shlex.quote(sys.executable)
@@ -43,6 +44,33 @@ def init_git_repo(path: Path) -> Path:
     return repo_path
 
 
+class RecordingProvider:
+    def __init__(self, actions: list[dict[str, object]]) -> None:
+        self.actions = actions
+        self.calls: list[AgentProviderStepInput] = []
+
+    def next_action(self, step_input: AgentProviderStepInput) -> ProviderResponse:
+        self.calls.append(step_input)
+        index = len(self.calls) - 1
+        if index >= len(self.actions):
+            return ProviderResponse(
+                status="succeeded",
+                actions=[
+                    {
+                        "type": "final_response",
+                        "status": "completed",
+                        "summary": "done",
+                    }
+                ],
+            )
+        return ProviderResponse(status="succeeded", actions=[self.actions[index]])
+
+
+class FailingProvider:
+    def next_action(self, step_input: AgentProviderStepInput) -> ProviderResponse:
+        return ProviderResponse.failed("provider unavailable")
+
+
 def test_agent_loop_executes_allowed_search_code_action(tmp_path: Path) -> None:
     (tmp_path / "calculator.py").write_text(
         "def add(a, b):\n    return a + b\n",
@@ -70,6 +98,159 @@ def test_agent_loop_executes_allowed_search_code_action(tmp_path: Path) -> None:
     assert result.steps[0].observation.status == "succeeded"
     assert result.steps[0].observation.payload["total_matches"] == 1
     assert result.trace_path is not None
+
+
+def test_agent_loop_asks_provider_for_each_next_action(tmp_path: Path) -> None:
+    (tmp_path / "calculator.py").write_text(
+        "def add(a, b):\n    return a + b\n",
+        encoding="utf-8",
+    )
+    provider = RecordingProvider(
+        [
+            {
+                "type": "tool_call",
+                "action": "search_code",
+                "reason": "locate implementation",
+                "args": {"query": "def add", "glob": "*.py"},
+            },
+            {"type": "final_response", "status": "completed", "summary": "done"},
+        ]
+    )
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="find add",
+            provider=provider,
+            verification_commands=[],
+            step_budget=4,
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "completed"
+    assert result.steps[0].observation.status == "succeeded"
+    assert len(provider.calls) == 2
+    assert provider.calls[0].step_index == 1
+    assert provider.calls[1].step_index == 2
+    assert provider.calls[1].observations[0].observation.status == "succeeded"
+
+
+def test_agent_loop_passes_failed_observation_to_provider(tmp_path: Path) -> None:
+    provider = RecordingProvider(
+        [
+            {
+                "type": "tool_call",
+                "action": "run_command",
+                "reason": "run failing command",
+                "args": {"command": "python -c 'raise SystemExit(1)'"},
+            },
+            {"type": "final_response", "status": "failed", "summary": "failed"},
+        ]
+    )
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="failed verification",
+            provider=provider,
+            verification_commands=["python -c 'raise SystemExit(1)'"],
+            step_budget=4,
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "failed"
+    assert len(provider.calls) == 2
+    assert provider.calls[1].observations[0].observation.status == "failed"
+
+
+def test_agent_loop_turns_provider_failure_into_failed_result(tmp_path: Path) -> None:
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="provider failure",
+            provider=FailingProvider(),
+            step_budget=3,
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "failed"
+    assert result.steps[0].observation.status == "failed"
+    assert result.steps[0].observation.error_message == "provider unavailable"
+
+
+def test_agent_loop_rejects_invalid_provider_action(tmp_path: Path) -> None:
+    provider = RecordingProvider([{"type": "tool_call", "action": "delete_repo"}])
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="bad provider action",
+            provider=provider,
+            step_budget=3,
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "failed"
+    assert result.steps[0].observation.status == "rejected"
+    assert result.steps[0].observation.summary == "Invalid MendCode action"
+
+
+def test_provider_driven_loop_stops_for_confirmation_request(tmp_path: Path) -> None:
+    provider = RecordingProvider(
+        [
+            {
+                "type": "tool_call",
+                "action": "run_command",
+                "reason": "run tests",
+                "args": {"command": "pytest -q"},
+            }
+        ]
+    )
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="safe mode command",
+            provider=provider,
+            permission_mode="safe",
+            verification_commands=["pytest -q"],
+            step_budget=3,
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "needs_user_confirmation"
+    assert result.steps[0].action.type == "user_confirmation_request"
+
+
+def test_provider_driven_loop_fails_when_step_budget_exhausted(tmp_path: Path) -> None:
+    provider = RecordingProvider(
+        [
+            {
+                "type": "tool_call",
+                "action": "search_code",
+                "reason": "search forever",
+                "args": {"query": "missing"},
+            }
+        ]
+    )
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="no final response",
+            provider=provider,
+            step_budget=1,
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "failed"
+    assert result.summary == "Agent loop exhausted step budget without final response"
 
 
 def test_agent_loop_turns_invalid_action_into_rejected_observation(tmp_path: Path) -> None:

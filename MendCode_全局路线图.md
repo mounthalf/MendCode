@@ -35,7 +35,7 @@ mendcode
 核心原则：
 
 - [ ] 聊天优先
-- [ ] 动态工具调用
+- [x] 动态工具调用底座
 - [ ] 摘要优先，详情可展开
 - [x] 默认 Guided Mode
 - [x] 修改先进入隔离 worktree
@@ -52,6 +52,7 @@ mendcode
 - [x] `MendCodeAction` / `Observation` schema
 - [x] `ScriptedAgentProvider` provider 边界
 - [x] Agent loop runner
+- [x] Provider-driven next-action loop
 - [x] Git worktree 隔离
 - [x] command policy / executor
 - [x] `repo_status` / `detect_project`
@@ -179,17 +180,20 @@ Phase A 已完成。
 交付：
 
 - [x] `ScriptedAgentProvider` provider 边界
+- [x] provider step input / observation history
 - [ ] Provider 配置 schema
 - [ ] OpenAI adapter
 - [ ] Anthropic adapter
 - [ ] OpenAI-compatible adapter
 - [ ] JSON Action fallback
 - [x] provider 错误降级
+- [x] provider-driven loop 错误降级
 
 停手点：
 
 - [x] CLI 不直接硬编码 action 列表
 - [x] 业务层可处理 provider failure observation
+- [x] provider 可基于 observation history 逐步返回下一条 MendCode Action
 - [ ] 业务层只处理真实 provider 归一化后的 MendCode Action，不直接依赖厂商 tool calling 格式
 
 ### Phase D：Tool Execution 与检索增强

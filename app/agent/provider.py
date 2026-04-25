@@ -1,8 +1,8 @@
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.agent_action import Observation
+from app.schemas.agent_action import MendCodeAction, Observation
 
 ProviderStatus = str
 
@@ -15,12 +15,34 @@ class AgentProviderInput(BaseModel):
     patch_proposal: dict[str, Any] | None = None
 
 
+class AgentObservationRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: MendCodeAction | None = None
+    observation: Observation
+
+
+class AgentProviderStepInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    problem_statement: str
+    verification_commands: list[str]
+    step_index: int = Field(ge=1)
+    remaining_steps: int = Field(ge=0)
+    observations: list[AgentObservationRecord] = Field(default_factory=list)
+    context: str | None = None
+
+
 class ProviderResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: ProviderStatus
     actions: list[dict[str, object]] = Field(default_factory=list)
     observation: Observation | None = None
+
+    @property
+    def action(self) -> dict[str, object] | None:
+        return self.actions[0] if self.actions else None
 
     @classmethod
     def failed(cls, error_message: str) -> "ProviderResponse":
@@ -43,7 +65,37 @@ class ProviderResponse(BaseModel):
         return self
 
 
+class AgentProvider(Protocol):
+    def next_action(self, step_input: AgentProviderStepInput) -> ProviderResponse:
+        ...
+
+
 class ScriptedAgentProvider:
+    def next_action(self, step_input: AgentProviderStepInput) -> ProviderResponse:
+        plan_response = self.plan_actions(
+            AgentProviderInput(
+                problem_statement=step_input.problem_statement,
+                verification_commands=step_input.verification_commands,
+            )
+        )
+        if plan_response.status != "succeeded":
+            return plan_response
+
+        action_index = step_input.step_index - 1
+        if action_index >= len(plan_response.actions):
+            return ProviderResponse(
+                status="succeeded",
+                actions=[
+                    {
+                        "type": "final_response",
+                        "status": "completed",
+                        "summary": "Agent loop completed requested verification commands",
+                    }
+                ],
+            )
+
+        return ProviderResponse(status="succeeded", actions=[plan_response.actions[action_index]])
+
     def plan_actions(self, provider_input: AgentProviderInput) -> ProviderResponse:
         if not provider_input.verification_commands:
             return ProviderResponse.failed("at least one verification command is required")
