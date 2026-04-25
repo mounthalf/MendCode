@@ -345,6 +345,7 @@ Provider 层负责把 OpenAI tool call、Anthropic tool use、OpenAI-compatible 
 
 处理规则：
 
+- [x] Provider 错误可降级为 failed observation
 - [ ] 模型输出非法 Action：自动要求模型重试，超过阈值后停止
 - [x] 调用不存在工具：形成 rejected observation
 - [x] 未授权工具：按权限模式决定确认、拒绝或升级权限

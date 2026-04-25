@@ -72,7 +72,7 @@ mendcode
 
 - [ ] LLM Provider 抽象
 - [ ] OpenAI / Anthropic / OpenAI-compatible adapter
-- [ ] Provider 错误降级为 observation
+- [x] Provider 错误降级为 observation
 - [ ] 真实模型驱动的动态 tool-use loop
 - [x] patch proposal schema
 - [ ] 真实 LLM 输出 patch proposal
@@ -211,11 +211,12 @@ mendcode
 - [ ] Anthropic adapter
 - [ ] OpenAI-compatible adapter
 - [ ] JSON action fallback
-- [ ] provider error observation
+- [x] provider error observation
 
 验收：
 
 - [x] CLI 只消费 provider 生成的 MendCode actions
+- [x] 业务层可消费 provider 结构化响应并处理 provider failure observation
 - [ ] 业务层只消费真实 provider 归一化后的 MendCode Action
 - [ ] 切换 provider 不影响 Agent loop
 - [ ] API key 不写入项目仓库

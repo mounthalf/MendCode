@@ -1,6 +1,10 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.schemas.agent_action import Observation
+
+ProviderStatus = str
 
 
 class AgentProviderInput(BaseModel):
@@ -11,8 +15,39 @@ class AgentProviderInput(BaseModel):
     patch_proposal: dict[str, Any] | None = None
 
 
+class ProviderResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: ProviderStatus
+    actions: list[dict[str, object]] = Field(default_factory=list)
+    observation: Observation | None = None
+
+    @classmethod
+    def failed(cls, error_message: str) -> "ProviderResponse":
+        return cls(
+            status="failed",
+            observation=Observation(
+                status="failed",
+                summary="Provider failed",
+                payload={},
+                error_message=error_message,
+            ),
+        )
+
+    @model_validator(mode="after")
+    def validate_response_shape(self) -> "ProviderResponse":
+        if self.status == "succeeded" and not self.actions:
+            raise ValueError("succeeded provider responses require actions")
+        if self.status == "failed" and self.observation is None:
+            raise ValueError("failed provider responses require observation")
+        return self
+
+
 class ScriptedAgentProvider:
-    def plan_actions(self, provider_input: AgentProviderInput) -> list[dict[str, object]]:
+    def plan_actions(self, provider_input: AgentProviderInput) -> ProviderResponse:
+        if not provider_input.verification_commands:
+            return ProviderResponse.failed("at least one verification command is required")
+
         actions: list[dict[str, object]] = [
             {
                 "type": "tool_call",
@@ -71,4 +106,4 @@ class ScriptedAgentProvider:
                 "summary": "Agent loop completed requested verification commands",
             }
         )
-        return actions
+        return ProviderResponse(status="succeeded", actions=actions)

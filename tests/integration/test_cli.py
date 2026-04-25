@@ -99,6 +99,32 @@ def test_fix_command_runs_agent_loop_and_reports_failure_insight(
     assert "trace_path" in result.stdout
 
 
+def test_fix_command_reports_provider_failure_without_agent_loop(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr("app.cli.main.console.width", 200, raising=False)
+    repo_path = init_git_repo(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "fix",
+            "修复 pytest 失败",
+            "--repo",
+            str(repo_path),
+        ],
+        terminal_width=200,
+    )
+
+    assert result.exit_code != 0
+    assert "Agent Fix" in result.stdout
+    assert "provider failed" in result.stdout.lower()
+    assert "at least one verification command is required" in result.stdout
+    assert "agent-" not in result.stdout
+
+
 def test_task_command_is_no_longer_registered() -> None:
     result = runner.invoke(app, ["task", "validate", "task.json"])
 

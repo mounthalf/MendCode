@@ -42,7 +42,7 @@ def health() -> None:
 def fix_problem(
     problem_statement: str,
     test_commands: list[str] = typer.Option(
-        ...,
+        [],
         "--test",
         "-t",
         help="Verification command to run. Can be supplied multiple times.",
@@ -53,17 +53,28 @@ def fix_problem(
     settings = get_settings()
     ensure_data_directories(settings)
     provider = ScriptedAgentProvider()
-    actions = provider.plan_actions(
+    provider_response = provider.plan_actions(
         AgentProviderInput(
             problem_statement=problem_statement,
             verification_commands=test_commands,
         )
     )
+    if provider_response.status != "succeeded":
+        table = Table(title="Agent Fix")
+        table.add_column("Field")
+        table.add_column("Value")
+        table.add_row("problem_statement", problem_statement)
+        table.add_row("status", "failed")
+        if provider_response.observation is not None:
+            table.add_row("summary", provider_response.observation.summary)
+            table.add_row("error", provider_response.observation.error_message or "")
+        console.print(table)
+        raise typer.Exit(code=1)
 
     loop_input = AgentLoopInput(
         repo_path=repo.resolve(),
         problem_statement=problem_statement,
-        actions=actions,
+        actions=provider_response.actions,
         step_budget=max_attempts + 3,
         use_worktree=True,
     )
