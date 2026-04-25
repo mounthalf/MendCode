@@ -18,13 +18,21 @@ mendcode
 
 `MendCode 是面向本地代码仓的可验证修复型 Code Agent。`
 
+开发清单机制：
+
+- 使用 Markdown checkbox 表示 TUI MVP 能力状态。
+- `[ ]` 表示尚未完成或尚未验证。
+- `[x]` 表示已经完成并通过对应测试或验证。
+- 每完成一项功能，必须同步更新本文档、[MendCode_开发方案.md](/home/wxh/MendCode/MendCode_开发方案.md)、[MendCode_全局路线图.md](/home/wxh/MendCode/MendCode_全局路线图.md) 中的对应清单。
+- 只讨论过但没有代码和验证证据的事项不能勾选。
+
 核心气质：
 
-- 少废话
-- 强验证
-- 过程透明
-- 改动可控
-- 默认安全
+- [ ] 少废话
+- [x] 强验证
+- [x] 过程透明
+- [x] 改动可控
+- [x] 默认安全
 
 ---
 
@@ -109,21 +117,21 @@ TUI 启动后采用折中型上下文感知：
 
 启动时允许自动执行：
 
-- 读取当前目录
-- 判断是否 Git repo
-- 读取当前 branch
-- 检查 dirty status
-- 识别项目类型
-- 推测常见验证命令
-- 展示最近一次 MendCode run
+- [ ] 读取当前目录
+- [x] 判断是否 Git repo
+- [x] 读取当前 branch
+- [x] 检查 dirty status
+- [x] 识别项目类型
+- [x] 推测常见验证命令
+- [ ] 展示最近一次 MendCode run
 
 启动时不自动执行：
 
-- 不跑测试
-- 不改文件
-- 不创建 worktree
-- 不调用 LLM
-- 不做全仓深度扫描
+- [ ] 不跑测试
+- [x] 不改主工作区文件
+- [x] 不创建 worktree
+- [x] 不调用 LLM
+- [x] 不做全仓深度扫描
 
 ---
 
@@ -148,12 +156,12 @@ MendCode 的权限基调：
 
 Guided Mode 下：
 
-- `repo_status` / `read_file` / `search_code` 自动执行
-- 测试、lint 可自动执行
-- patch 可自动应用到隔离 worktree
-- apply 到当前工作区必须确认
-- git commit / push 必须确认
-- 任意 shell、安装依赖、联网默认确认或禁止
+- [x] `repo_status` / `read_file` / `search_code` 自动执行
+- [x] 测试、lint 可自动执行
+- [x] patch 可自动应用到隔离 worktree
+- [ ] apply 到当前工作区必须确认
+- [ ] git commit / push 必须确认
+- [ ] 任意 shell、安装依赖、联网默认确认或禁止
 
 确认不是打断，而是把风险决策交还给用户。
 
@@ -167,19 +175,19 @@ TUI 可见度采用：
 
 默认展示：
 
-- 当前阶段
-- 工具调用摘要
-- 关键 observation
-- 文件数量和风险
-- 验证结果
-- 下一步动作
+- [ ] 当前阶段
+- [ ] 工具调用摘要
+- [x] 关键 observation
+- [ ] 文件数量和风险
+- [x] 验证结果
+- [ ] 下一步动作
 
 按需展开：
 
-- 完整命令输出
-- 完整工具参数
-- 完整 trace
-- 完整 diff
+- [ ] 完整命令输出
+- [ ] 完整工具参数
+- [x] 完整 trace
+- [ ] 完整 diff
 
 不默认展示完整 diff。默认展示 diff summary：
 
@@ -210,9 +218,9 @@ MendCode 使用统一 LLM Provider 抽象。
 
 首批重点支持：
 
-- OpenAI API
-- Anthropic API
-- OpenAI-compatible API
+- [ ] OpenAI API
+- [ ] Anthropic API
+- [ ] OpenAI-compatible API
 
 国产模型提供商优先通过 `openai-compatible` 支持，不为每个厂商单独写业务逻辑。
 
@@ -257,21 +265,21 @@ MendCode 不采用“先生成完整计划再机械执行”的模式。
 
 也就是：
 
-- 模型决定下一步想做什么
-- MendCode 判断动作是否允许
-- MendCode 执行工具
-- MendCode 记录 trace
-- MendCode 保护 worktree 和主工作区边界
+- [ ] 模型决定下一步想做什么
+- [x] MendCode 判断动作是否允许
+- [x] MendCode 执行工具
+- [x] MendCode 记录 trace
+- [x] MendCode 保护 worktree 和主工作区边界
 
 第一版动态工具循环开放的工具应控制在最小集合：
 
-- `repo_status`
-- `detect_project`
-- `run_command`
-- `read_file`
-- `search_code`
-- `apply_patch_to_worktree`
-- `show_diff`
+- [x] `repo_status`
+- [x] `detect_project`
+- [x] `run_command`
+- [x] `read_file`
+- [x] `search_code`
+- [x] `apply_patch_to_worktree`
+- [x] `show_diff`
 
 ---
 
@@ -321,11 +329,11 @@ Provider 层负责把 OpenAI tool call、Anthropic tool use、OpenAI-compatible 
 
 业务层只处理：
 
-- `MendCodeAction`
-- `PermissionGate`
-- `ToolExecutor`
-- `Observation`
-- `TraceRecorder`
+- [x] `MendCodeAction`
+- [x] `PermissionGate`
+- [x] `ToolExecutor`
+- [x] `Observation`
+- [x] `TraceRecorder`
 
 ---
 
@@ -337,12 +345,12 @@ Provider 层负责把 OpenAI tool call、Anthropic tool use、OpenAI-compatible 
 
 处理规则：
 
-- 模型输出非法 Action：自动要求模型重试，超过阈值后停止
-- 调用不存在工具：反馈可用工具列表并要求模型重试
-- 未授权工具：按权限模式决定确认、拒绝或升级权限
-- 工具执行失败：作为 observation 交还模型继续决策
-- 连续无进展：停止自动循环，总结已尝试内容，请用户选择下一步
-- patch 后验证失败：最多 `max_attempts` 次重试，超过后保留 trace 和失败 patch
+- [ ] 模型输出非法 Action：自动要求模型重试，超过阈值后停止
+- [x] 调用不存在工具：形成 rejected observation
+- [x] 未授权工具：按权限模式决定确认、拒绝或升级权限
+- [x] 工具执行失败：作为 observation 记录
+- [ ] 连续无进展：停止自动循环，总结已尝试内容，请用户选择下一步
+- [ ] patch 后验证失败：最多 `max_attempts` 次重试，超过后保留 trace 和失败 patch
 
 产品原则：
 
@@ -427,32 +435,32 @@ Custom Mode：
 
 第一版 TUI Agent MVP 支持：
 
-- `mendcode` 启动 TUI
-- 轻量 repo scan
-- 聊天输入
-- Guided permission mode
-- LLM Action loop
-- 工具调用摘要展示
-- 工具：`repo_status` / `detect_project` / `run_command` / `read_file` / `search_code`
-- 生成 patch proposal
-- 用户确认后 apply 到 worktree
-- 运行验证
-- diff summary
-- trace 记录
-- 工程审查收尾
+- [ ] `mendcode` 启动 TUI
+- [ ] 轻量 repo scan
+- [ ] 聊天输入
+- [x] Guided permission mode
+- [ ] LLM Action loop
+- [ ] 工具调用摘要展示
+- [x] 工具：`repo_status` / `detect_project` / `run_command` / `read_file` / `search_code`
+- [x] 生成 patch proposal schema
+- [x] 用户确认后 apply 到 worktree 的底层能力
+- [x] 运行验证
+- [x] diff summary
+- [x] trace 记录
+- [ ] 工程审查收尾
 
 第一版不支持：
 
-- 多任务并行
-- 后台长期运行任务
-- 多仓库切换
-- 复杂布局拖拽
-- 完整配置 UI
-- 项目记忆自动写入
-- commit / push 自动化
-- 复杂 diff viewer
-- 本地模型
-- 多 provider 全量深度适配
+- [ ] 多任务并行
+- [ ] 后台长期运行任务
+- [ ] 多仓库切换
+- [ ] 复杂布局拖拽
+- [ ] 完整配置 UI
+- [ ] 项目记忆自动写入
+- [ ] commit / push 自动化
+- [ ] 复杂 diff viewer
+- [ ] 本地模型
+- [ ] 多 provider 全量深度适配
 
 ---
 
@@ -531,14 +539,14 @@ Actions:
 
 演示版本通过的标准：
 
-- 用户不需要写 JSON
-- 用户不需要提供 `old_text/new_text`
-- 用户可以只用自然语言描述问题
-- Agent 能展示每一步工具调用摘要
-- Agent 的修改只发生在 worktree
-- 修复结果必须有验证命令证明
-- 用户可以查看 diff summary
-- 用户可以 apply 或 discard
+- [x] 用户不需要写 JSON
+- [x] 用户不需要提供手工文本替换补丁
+- [ ] 用户可以只用自然语言描述问题
+- [ ] Agent 能展示每一步工具调用摘要
+- [x] Agent 的修改只发生在 worktree
+- [x] 修复结果必须有验证命令证明
+- [x] 用户可以查看 diff summary 的底层数据
+- [ ] 用户可以 apply 或 discard
 
 如果做不到这些，就还不是目标形态下的可演示 TUI Agent MVP。
 
@@ -556,11 +564,11 @@ mendcode fix "<problem>" --test "<command>"
 
 它的价值是提前沉淀：
 
-- `problem_statement`
-- verification execution
-- failure parser
-- trace
-- worktree safety
+- [x] `problem_statement`
+- [x] verification execution
+- [x] failure parser
+- [x] trace
+- [x] worktree safety
 
 后续 TUI 会复用这些底座，但用户主入口应逐步迁移到：
 

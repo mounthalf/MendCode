@@ -6,6 +6,14 @@
 
 旧方案中的 CLI-first、fixed-flow-first、batch-eval-first 内容已清理，不再作为当前开发主线。
 
+开发清单机制：
+
+- 使用 Markdown checkbox 维护开发状态。
+- `[ ]` 表示计划中或尚未完成。
+- `[x]` 表示代码已落地，并已通过对应测试或验证。
+- 每完成一项功能，必须在本文件、[MendCode_全局路线图.md](/home/wxh/MendCode/MendCode_全局路线图.md)、[MendCode_TUI产品基调与交互方案.md](/home/wxh/MendCode/MendCode_TUI产品基调与交互方案.md) 中同步勾选对应条目。
+- 只讨论过但没有代码和验证证据的事项不能勾选。
+
 ---
 
 ## 2. 当前产品目标
@@ -28,31 +36,31 @@ mendcode
 
 截至 2026-04-25，已完成能力主要是新 TUI Agent 路线的底座：
 
-- CLI 基础命令
-- `MendCodeAction` / `Observation` 动作协议
-- 最小 `AgentLoop`
-- `ScriptedAgentProvider`，用于在真实 LLM provider 前固定生成 MendCode actions
-- worktree 内 patch proposal 执行
-- verification gate：最后一次关键 observation 未成功时不能 completed
-- Permission Gate
-- Safe / Guided / Full / Custom 权限模式
-- worktree 隔离
-- command policy / executor
-- verification command 执行
-- JSONL trace
-- `read_file`
-- `search_code`
-- `apply_patch_to_worktree` 底层 patch helper
-- `mendcode fix "<problem>" --test "<command>"` 过渡入口，已在隔离 worktree 中执行
-- pytest 失败日志解析
+- [x] CLI 基础命令
+- [x] `MendCodeAction` / `Observation` 动作协议
+- [x] 最小 `AgentLoop`
+- [x] `ScriptedAgentProvider`，用于在真实 LLM provider 前固定生成 MendCode actions
+- [x] worktree 内 patch proposal 执行
+- [x] verification gate：最后一次关键 observation 未成功时不能 completed
+- [x] Permission Gate
+- [x] Safe / Guided / Full / Custom 权限模式
+- [x] worktree 隔离
+- [x] command policy / executor
+- [x] verification command 执行
+- [x] JSONL trace
+- [x] `read_file`
+- [x] `search_code`
+- [x] `apply_patch_to_worktree` 底层 patch helper
+- [x] `mendcode fix "<problem>" --test "<command>"` 过渡入口，已在隔离 worktree 中执行
+- [x] pytest 失败日志解析
 
 已删除的旧主线：
 
-- task JSON 入口
-- 固定流程补丁 demo
-- batch eval 平台
-- HTTP health API
-- demo task suite 产品数据
+- [x] 删除 task JSON 入口
+- [x] 删除固定流程补丁 demo
+- [x] 删除 batch eval 平台
+- [x] 删除 HTTP health API
+- [x] 删除 demo task suite 产品数据
 
 这些删除是为了让后续开发只围绕 TUI Agent 主线推进。
 
@@ -62,16 +70,16 @@ mendcode
 
 距离 TUI Agent MVP 还缺：
 
-- LLM Provider 抽象
-- OpenAI / Anthropic / OpenAI-compatible adapter
-- Provider 错误降级为 observation
-- 真实模型驱动的动态 tool-use loop
-- patch proposal schema
-- 真实 LLM 输出 patch proposal
-- diff summary 与 TUI review 收尾
-- TUI 聊天界面
-- 工具调用摘要展示
-- apply / discard 收尾动作
+- [ ] LLM Provider 抽象
+- [ ] OpenAI / Anthropic / OpenAI-compatible adapter
+- [ ] Provider 错误降级为 observation
+- [ ] 真实模型驱动的动态 tool-use loop
+- [x] patch proposal schema
+- [ ] 真实 LLM 输出 patch proposal
+- [ ] diff summary 与 TUI review 收尾
+- [ ] TUI 聊天界面
+- [ ] 工具调用摘要展示
+- [ ] apply / discard 收尾动作
 
 ---
 
@@ -110,31 +118,31 @@ mendcode
 
 交付：
 
-- `MendCodeAction`
-- `ActionType`
-- `ToolCallAction`
-- `PatchProposalAction`
-- `ConfirmationRequestAction`
-- `FinalResponseAction`
-- `Observation`
-- action validation
-- action trace payload
+- [x] `MendCodeAction`
+- [x] `ActionType`
+- [x] `ToolCallAction`
+- [x] `PatchProposalAction`
+- [x] `ConfirmationRequestAction`
+- [x] `FinalResponseAction`
+- [x] `Observation`
+- [x] action validation
+- [x] action trace payload
 
 验收：
 
-- 能解析一个合法 `search_code` action
-- 非法 action 能返回结构化错误
-- action 和 observation 都能写入 trace
+- [x] 能解析一个合法 `search_code` action
+- [x] 非法 action 能返回结构化错误
+- [x] action 和 observation 都能写入 trace
 
 当前进展：
 
-- 已新增 `app/schemas/agent_action.py`
-- 已定义 `MendCodeAction` 统一动作协议
-- 已支持 `assistant_message` / `tool_call` / `patch_proposal` / `user_confirmation_request` / `final_response`
-- 已定义 `Observation`
-- 已提供 `parse_mendcode_action`
-- 已提供 `build_invalid_action_observation`
-- 已通过单测覆盖合法 action、未知工具拒绝、非法 action observation 和 trace payload 序列化
+- [x] 已新增 `app/schemas/agent_action.py`
+- [x] 已定义 `MendCodeAction` 统一动作协议
+- [x] 已支持 `assistant_message` / `tool_call` / `patch_proposal` / `user_confirmation_request` / `final_response`
+- [x] 已定义 `Observation`
+- [x] 已提供 `parse_mendcode_action`
+- [x] 已提供 `build_invalid_action_observation`
+- [x] 已通过单测覆盖合法 action、未知工具拒绝、非法 action observation 和 trace payload 序列化
 
 下一步应进入阶段二：
 
@@ -150,37 +158,37 @@ mendcode
 
 交付：
 
-- `PermissionMode`: Safe / Guided / Full / Custom
-- 工具风险等级
-- permission decision
-- deny / confirm / allow
-- 默认 Guided Mode
+- [x] `PermissionMode`: Safe / Guided / Full / Custom
+- [x] 工具风险等级
+- [x] permission decision
+- [x] deny / confirm / allow
+- [x] 默认 Guided Mode
 
 验收：
 
-- Guided Mode 自动允许只读工具
-- Guided Mode 允许 worktree patch
-- Guided Mode 对主工作区 apply 返回确认请求
-- 未授权工具不执行，并形成 observation
+- [x] Guided Mode 自动允许只读工具
+- [x] Guided Mode 允许 worktree patch
+- [ ] Guided Mode 对主工作区 apply 返回确认请求
+- [x] 未授权工具不执行，并形成 observation
 
 当前进展：
 
-- 已新增 `app/agent/permission.py`
-- 已定义 `PermissionMode`: Safe / Guided / Full / Custom
-- 已定义 `PermissionDecision`
-- 已建立首批工具风险等级
-- Guided Mode 已允许只读工具、`run_command` 和 worktree patch
-- Safe Mode 会对中风险工具返回确认请求
-- Full Mode 允许已知工具
-- Custom Mode 默认要求显式配置
-- 已支持把需要确认的 tool call 转成 `user_confirmation_request`
-- 已接入最小 Agent loop，能把需要确认的工具转成 confirmation action 和 rejected observation
+- [x] 已新增 `app/agent/permission.py`
+- [x] 已定义 `PermissionMode`: Safe / Guided / Full / Custom
+- [x] 已定义 `PermissionDecision`
+- [x] 已建立首批工具风险等级
+- [x] Guided Mode 已允许只读工具、`run_command` 和 worktree patch
+- [x] Safe Mode 会对中风险工具返回确认请求
+- [x] Full Mode 允许已知工具
+- [x] Custom Mode 默认要求显式配置
+- [x] 已支持把需要确认的 tool call 转成 `user_confirmation_request`
+- [x] 已接入最小 Agent loop，能把需要确认的工具转成 confirmation action 和 rejected observation
 
 当前尚未完成：
 
-- 主工作区 apply 的独立 action 和高风险判定
-- 用户确认结果回写 observation
-- 自定义权限配置文件
+- [ ] 主工作区 apply 的独立 action 和高风险判定
+- [ ] 用户确认结果回写 observation
+- [ ] 自定义权限配置文件
 
 下一步应进入阶段三或先补阶段四前置：
 
@@ -198,18 +206,19 @@ mendcode
 
 交付：
 
-- Provider config
-- OpenAI adapter
-- Anthropic adapter
-- OpenAI-compatible adapter
-- JSON action fallback
-- provider error observation
+- [ ] Provider config
+- [ ] OpenAI adapter
+- [ ] Anthropic adapter
+- [ ] OpenAI-compatible adapter
+- [ ] JSON action fallback
+- [ ] provider error observation
 
 验收：
 
-- 业务层只消费 MendCode Action
-- 切换 provider 不影响 Agent loop
-- API key 不写入项目仓库
+- [x] CLI 只消费 provider 生成的 MendCode actions
+- [ ] 业务层只消费真实 provider 归一化后的 MendCode Action
+- [ ] 切换 provider 不影响 Agent loop
+- [ ] API key 不写入项目仓库
 
 ---
 
@@ -221,24 +230,24 @@ mendcode
 
 交付：
 
-- Agent loop runner
-- step budget
-- worktree execution context
-- observation history
-- trace event
+- [x] Agent loop runner
+- [x] step budget
+- [x] worktree execution context
+- [x] observation history
+- [x] trace event
 
 首批工具：
 
-- `repo_status`
-- `detect_project`
-- `run_command`
-- `read_file`
-- `search_code`
+- [x] `repo_status`
+- [x] `detect_project`
+- [x] `run_command`
+- [x] `read_file`
+- [x] `search_code`
 
 验收：
 
-- 用户描述 pytest 失败后，过渡入口能在隔离 worktree 中运行验证、解析失败并留下 trace
-- 测试驱动的 Agent loop 能在 worktree 中应用 patch proposal、复跑验证、输出 diff summary
+- [x] 用户描述 pytest 失败后，过渡入口能在隔离 worktree 中运行验证、解析失败并留下 trace
+- [x] 测试驱动的 Agent loop 能在 worktree 中应用 patch proposal、复跑验证、输出 diff summary
 
 ---
 
@@ -250,18 +259,18 @@ mendcode
 
 交付：
 
-- patch proposal schema
-- apply patch to worktree
-- diff summary
-- verification gate
-- max_attempts retry
-- failed attempt trace
+- [x] patch proposal schema
+- [x] apply patch to worktree
+- [x] diff summary
+- [x] verification gate
+- [ ] max_attempts retry
+- [ ] failed attempt trace
 
 验收：
 
-- 修复成功时输出 changed files、diff summary、verification result
-- 修复失败时输出尝试记录和下一步选项
-- 未验证通过时不能声称修复完成
+- [x] 修复成功时输出 changed files、diff summary、verification result
+- [ ] 修复失败时输出尝试记录和下一步选项
+- [x] 未验证通过时不能声称修复完成
 
 ---
 
@@ -277,23 +286,23 @@ mendcode
 
 交付：
 
-- 启动轻量 repo scan
-- 聊天输入
-- Guided Mode 默认权限
-- 工具调用摘要展示
-- 详情展开
-- 工程审查收尾
-- view diff / logs / trace / apply / discard
+- [ ] 启动轻量 repo scan
+- [ ] 聊天输入
+- [x] Guided Mode 默认权限
+- [ ] 工具调用摘要展示
+- [ ] 详情展开
+- [ ] 工程审查收尾
+- [ ] view diff / logs / trace / apply / discard
 
 验收：
 
-- 用户可以在 TUI 中描述问题
-- Agent 能完成一次 worktree 内修复尝试
-- 用户可以基于工程审查摘要决定 apply 或 discard
-- 用户不需要写 JSON
-- 用户不需要提供手工文本替换补丁
-- Agent 每一步工具调用都有摘要
-- 修复结果必须有验证命令证明
+- [ ] 用户可以在 TUI 中描述问题
+- [x] Agent 能完成一次 worktree 内修复尝试
+- [ ] 用户可以基于工程审查摘要决定 apply 或 discard
+- [x] 用户不需要写 JSON
+- [x] 用户不需要提供手工文本替换补丁
+- [ ] Agent 每一步工具调用都有摘要
+- [x] 修复结果必须有验证命令证明
 
 ---
 
@@ -307,11 +316,11 @@ mendcode fix "<problem>" --test "<command>"
 
 该入口只作为过渡能力保留，用于沉淀：
 
-- `problem_statement`
-- verification execution
-- failure parser
-- trace
-- worktree safety
+- [x] `problem_statement`
+- [x] verification execution
+- [x] failure parser
+- [x] trace
+- [x] worktree safety
 
 后续不要继续把它扩展成完整产品。新增能力应优先服务 TUI Agent 主线。
 
@@ -321,9 +330,9 @@ mendcode fix "<problem>" --test "<command>"
 
 后续每轮开发都要同步更新：
 
-- [MendCode_TUI产品基调与交互方案.md](/home/wxh/MendCode/MendCode_TUI产品基调与交互方案.md)：产品设定变化时更新
-- [MendCode_开发方案.md](/home/wxh/MendCode/MendCode_开发方案.md)：执行路线变化时更新
-- [MendCode_全局路线图.md](/home/wxh/MendCode/MendCode_全局路线图.md)：阶段优先级变化时更新
-- [MendCode_问题记录.md](/home/wxh/MendCode/MendCode_问题记录.md)：记录真实问题和解决方案
+- [ ] [MendCode_TUI产品基调与交互方案.md](/home/wxh/MendCode/MendCode_TUI产品基调与交互方案.md)：产品设定变化时更新
+- [ ] [MendCode_开发方案.md](/home/wxh/MendCode/MendCode_开发方案.md)：执行路线变化时更新
+- [ ] [MendCode_全局路线图.md](/home/wxh/MendCode/MendCode_全局路线图.md)：阶段优先级变化时更新
+- [ ] [MendCode_问题记录.md](/home/wxh/MendCode/MendCode_问题记录.md)：记录真实问题和解决方案
 
 如果其它文档与 TUI 产品方案冲突，以 TUI 产品方案为准。

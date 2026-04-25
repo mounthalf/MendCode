@@ -8,6 +8,14 @@
 
 所有产品判断以根目录下的 [MendCode_TUI产品基调与交互方案.md](/home/wxh/MendCode/MendCode_TUI产品基调与交互方案.md) 为准。本文档不再维护旧 fixed-flow、CLI-first、batch-eval-first 的路线。
 
+开发清单机制：
+
+- 使用 Markdown checkbox 表示路线状态。
+- `[ ]` 表示尚未完成或尚未验证。
+- `[x]` 表示已经完成并通过对应测试或验证。
+- 每完成一项功能，必须同步更新本文档、[MendCode_开发方案.md](/home/wxh/MendCode/MendCode_开发方案.md)、[MendCode_TUI产品基调与交互方案.md](/home/wxh/MendCode/MendCode_TUI产品基调与交互方案.md) 中的对应清单。
+- 只有代码落地并有验证证据的项目才能勾选。
+
 ---
 
 ## 2. 当前最终目标
@@ -26,33 +34,34 @@ mendcode
 
 核心原则：
 
-- 聊天优先
-- 动态工具调用
-- 摘要优先，详情可展开
-- 默认 Guided Mode
-- 修改先进入隔离 worktree
-- 没有验证结果不声称修复完成
-- 用户最终决定 apply / discard / commit
+- [ ] 聊天优先
+- [ ] 动态工具调用
+- [ ] 摘要优先，详情可展开
+- [x] 默认 Guided Mode
+- [x] 修改先进入隔离 worktree
+- [x] 没有验证结果不声称修复完成
+- [ ] 用户最终决定 apply / discard / commit
 
 ---
 
 ## 3. 当前项目真实状态
 
-截至 2026-04-24，项目已经完成的是底座能力，不是最终产品形态：
+截至 2026-04-25，项目已经完成的是底座能力，不是最终产品形态：
 
-- Typer CLI 基础入口
-- `TaskSpec` / `RunState` / verification schema
-- Git worktree 隔离
-- command policy / executor
-- `read_file` / `search_code` / `apply_patch`
-- verification command 执行
-- JSONL trace
-- fixed-flow demo 兼容能力
-- fixed-flow 工具权限检查
-- batch eval 辅助回归能力
-- demo task suite 与 Python unit-fix fixture
-- `mendcode fix "<problem>" --test "<command>"` 过渡入口
-- pytest 风格失败日志解析
+- [x] Typer CLI 基础入口
+- [x] `MendCodeAction` / `Observation` schema
+- [x] `ScriptedAgentProvider` provider 边界
+- [x] Agent loop runner
+- [x] Git worktree 隔离
+- [x] command policy / executor
+- [x] `repo_status` / `detect_project`
+- [x] `read_file` / `search_code`
+- [x] worktree patch proposal 执行
+- [x] verification command 执行
+- [x] diff summary
+- [x] JSONL trace
+- [x] `mendcode fix "<problem>" --test "<command>"` 过渡入口
+- [x] pytest 风格失败日志解析
 
 这些能力的定位：
 
@@ -66,22 +75,20 @@ mendcode
 
 以下旧方向不再作为主线：
 
-- `mendcode task run <json>` 作为主要用户入口
-- `old_text/new_text` 作为主要任务表达方式
-- fixed-flow demo 作为产品核心体验
-- 先补更多 demo suite
-- 先做 batch eval 平台
-- 先做 API 服务化
-- 先做复杂 Web UI
-- 先做多 Agent 编排
-
-它们可以作为兼容能力、测试 fixture 或后续增强，但不应抢占 TUI Agent 主线。
+- [x] 移除 `mendcode task run <json>` 作为主要用户入口
+- [x] 移除手工文本替换补丁作为主要任务表达方式
+- [x] 移除 fixed-flow demo 产品核心体验
+- [x] 暂停补更多 demo suite
+- [x] 暂停 batch eval 平台
+- [x] 暂停 API 服务化
+- [x] 暂停复杂 Web UI
+- [x] 暂停多 Agent 编排
 
 当前处理原则：
 
-- 已从历史分支迁回 demo suite 与 batch eval 的有用实现。
-- 它们的定位是“底座回归验证”和“演示辅助”，不是下一阶段主线。
-- 后续如果 eval 与 TUI Agent loop 抢资源，优先推进 TUI Agent loop。
+- [x] 旧 task JSON、fixed-flow demo、batch eval、API 服务入口已从主线代码移除。
+- [x] 后续如需回归验证，围绕 Agent loop 新建 fixture，不恢复旧产品入口。
+- [x] 如果 eval 与 TUI Agent loop 抢资源，优先推进 TUI Agent loop。
 
 ---
 
@@ -107,29 +114,29 @@ mendcode
 
 交付：
 
-- `MendCodeAction` schema
-- `Observation` schema
-- `assistant_message` / `tool_call` / `patch_proposal` / `user_confirmation_request` / `final_response`
-- Action 解析与校验
-- Action trace 事件
-- step budget
-- 非法 Action 的分级降级
+- [x] `MendCodeAction` schema
+- [x] `Observation` schema
+- [x] `assistant_message` / `tool_call` / `patch_proposal` / `user_confirmation_request` / `final_response`
+- [x] Action 解析与校验
+- [x] Action trace 事件
+- [x] step budget
+- [x] 非法 Action 的分级降级
 
 停手点：
 
-- 能在无 TUI 的测试中模拟一轮 `tool_call -> observation -> next action`
-- 非法 action 不会让系统崩溃
+- [x] 能在无 TUI 的测试中模拟一轮 `tool_call -> observation -> next action`
+- [x] 非法 action 不会让系统崩溃
 
 当前状态：
 
-- `MendCodeAction` schema 已落地
-- `Observation` schema 已落地
-- 合法 tool call 可解析
-- 未知工具会被 schema 拒绝
-- 非法 action 可转换为 rejected observation
-- action / observation 可写入 trace payload
+- [x] `MendCodeAction` schema 已落地
+- [x] `Observation` schema 已落地
+- [x] 合法 tool call 可解析
+- [x] 未知工具会被 schema 拒绝
+- [x] 非法 action 可转换为 rejected observation
+- [x] action / observation 可写入 trace payload
 
-Phase A 的 schema 基础已具备。后续仍需在 Agent loop runner 中真正消费这些 schema。
+Phase A 已完成。
 
 ### Phase B：Permission Gate
 
@@ -139,30 +146,27 @@ Phase A 的 schema 基础已具备。后续仍需在 Agent loop runner 中真正
 
 交付：
 
-- 权限模式 schema
-- 工具风险等级
-- permission decision
-- 中高风险动作确认请求
-- 默认 Guided Mode
+- [x] 权限模式 schema
+- [x] 工具风险等级
+- [x] permission decision
+- [x] 中高风险动作确认请求
+- [x] 默认 Guided Mode
 
 停手点：
 
-- `read_file` / `search_code` 可自动通过
-- `apply to workspace` 必须确认
-- 未授权工具能形成清晰 observation
+- [x] `read_file` / `search_code` 可自动通过
+- [ ] `apply to workspace` 必须确认
+- [x] 未授权工具能形成清晰 observation
 
 当前状态：
 
-- Permission Gate 最小实现已落地
-- Safe / Guided / Full / Custom 模式已定义
-- 首批工具风险等级已定义
-- Guided Mode 已允许只读工具、验证命令和 worktree patch
-- Safe Mode 对中风险工具返回确认请求
-- 确认请求已统一为 `user_confirmation_request` action
-- fixed-flow runner 已接入 `allowed_tools` 检查，未授权工具会返回 rejected tool result 并进入 trace
-- runner 的阶段状态已从统一 `summarize` 收敛为更精确的 `bootstrap/locate/inspect/patch/verify/summarize`
-
-后续需要把 Permission Gate 接入 Agent loop，而不是停留在独立函数。
+- [x] Permission Gate 最小实现已落地
+- [x] Safe / Guided / Full / Custom 模式已定义
+- [x] 首批工具风险等级已定义
+- [x] Guided Mode 已允许只读工具、验证命令和 worktree patch
+- [x] Safe Mode 对中风险工具返回确认请求
+- [x] 确认请求已统一为 `user_confirmation_request` action
+- [x] Permission Gate 已接入 Agent loop
 
 ### Phase C：LLM Provider 抽象
 
@@ -172,16 +176,18 @@ Phase A 的 schema 基础已具备。后续仍需在 Agent loop runner 中真正
 
 交付：
 
-- Provider 配置 schema
-- OpenAI adapter
-- Anthropic adapter
-- OpenAI-compatible adapter
-- JSON Action fallback
-- provider 错误降级
+- [x] `ScriptedAgentProvider` provider 边界
+- [ ] Provider 配置 schema
+- [ ] OpenAI adapter
+- [ ] Anthropic adapter
+- [ ] OpenAI-compatible adapter
+- [ ] JSON Action fallback
+- [ ] provider 错误降级
 
 停手点：
 
-- 业务层只处理 MendCode Action，不直接依赖厂商 tool calling 格式
+- [x] CLI 不直接硬编码 action 列表
+- [ ] 业务层只处理 MendCode Action，不直接依赖厂商 tool calling 格式
 
 ### Phase D：Tool Execution 与检索增强
 
@@ -191,17 +197,18 @@ Phase A 的 schema 基础已具备。后续仍需在 Agent loop runner 中真正
 
 交付：
 
-- `repo_status`
-- `detect_project`
-- `run_command`
-- `read_file`
-- `search_code`
-- 失败测试文件读取
-- 基于 failed node / import / rg 的候选文件检索
+- [x] `repo_status`
+- [x] `detect_project`
+- [x] `run_command`
+- [x] `read_file`
+- [x] `search_code`
+- [ ] 失败测试文件读取
+- [ ] 基于 failed node / import / rg 的候选文件检索
 
 停手点：
 
-- 用户描述“pytest 失败”后，Agent 能运行测试、解析失败、读取测试文件、搜索候选实现
+- [x] 用户描述“pytest 失败”后，过渡入口能运行测试并解析失败
+- [ ] 用户描述“pytest 失败”后，Agent 能读取测试文件、搜索候选实现
 
 ### Phase E：Patch Proposal 与验证闭环
 
@@ -211,17 +218,17 @@ Phase A 的 schema 基础已具备。后续仍需在 Agent loop runner 中真正
 
 交付：
 
-- patch proposal schema
-- patch apply to worktree
-- diff summary
-- verification gate
-- max_attempts retry
-- failed patch trace
+- [x] patch proposal schema
+- [x] patch apply to worktree
+- [x] diff summary
+- [x] verification gate
+- [ ] max_attempts retry
+- [ ] failed patch trace
 
 停手点：
 
-- 修复通过时能输出 changed files、diff summary、verification result
-- 修复失败时能输出尝试记录和下一步选项
+- [x] 修复通过时能输出 changed files、diff summary、verification result
+- [ ] 修复失败时能输出尝试记录和下一步选项
 
 ### Phase F：TUI MVP
 
@@ -235,19 +242,19 @@ mendcode
 
 交付：
 
-- 启动轻量 repo scan
-- 聊天输入
-- Guided Mode 默认权限
-- 工具调用摘要展示
-- 详情展开
-- 工程审查收尾
-- view diff / logs / trace / apply / discard
+- [ ] 启动轻量 repo scan
+- [ ] 聊天输入
+- [x] Guided Mode 默认权限
+- [ ] 工具调用摘要展示
+- [ ] 详情展开
+- [ ] 工程审查收尾
+- [ ] view diff / logs / trace / apply / discard
 
 停手点：
 
-- 用户可以在 TUI 中描述一个 pytest 失败问题
-- Agent 能动态调用工具完成一次 worktree 内修复尝试
-- 用户能基于审查摘要决定 apply 或 discard
+- [ ] 用户可以在 TUI 中描述一个 pytest 失败问题
+- [x] Agent 能通过测试驱动 action 完成一次 worktree 内修复尝试
+- [ ] 用户能基于审查摘要决定 apply 或 discard
 
 ---
 
@@ -255,18 +262,18 @@ mendcode
 
 第一版 TUI Agent MVP 不做：
 
-- 多任务并行
-- 后台长期任务
-- 多仓库切换
-- 复杂布局拖拽
-- 完整配置 UI
-- 项目记忆自动写入
-- commit / push 自动化
-- 复杂 diff viewer
-- 本地模型
-- 多 provider 深度适配
-- 企业权限系统
-- GitHub PR 自动化
+- [ ] 多任务并行
+- [ ] 后台长期任务
+- [ ] 多仓库切换
+- [ ] 复杂布局拖拽
+- [ ] 完整配置 UI
+- [ ] 项目记忆自动写入
+- [ ] commit / push 自动化
+- [ ] 复杂 diff viewer
+- [ ] 本地模型
+- [ ] 多 provider 深度适配
+- [ ] 企业权限系统
+- [ ] GitHub PR 自动化
 
 ---
 
