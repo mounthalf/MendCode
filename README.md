@@ -7,13 +7,12 @@ MendCode 的目标形态是终端 TUI 工作台：用户输入 `mendcode` 进入
 ## Current Capabilities
 
 - Python project skeleton with `pyproject.toml`
-- CLI health check and task file inspection
-- Transitional `mendcode fix "<problem>" --test "<command>"` entry for agent-style verification runs
-- `task run` fixed-flow compatibility demo inside a per-run git worktree
+- CLI health check
+- Minimal Agent Action Loop for tool calls, observations, permission decisions, and trace output
+- Transitional `mendcode fix "<problem>" --test "<command>"` entry wired through the Agent loop
 - Command-policy guarded verification execution with timeout and trace output
 - Pytest-style failure insight extraction for failed verification output
-- FastAPI health endpoint
-- JSONL trace output for task runs
+- JSONL trace output for Agent loop runs
 
 ## Product Direction
 
@@ -34,6 +33,7 @@ The TUI should provide:
 - diff/log/trace review before apply or discard
 
 The current CLI commands are implementation slices and compatibility surfaces, not the final product shape.
+The old fixed-flow task JSON, batch eval, and API surfaces have been removed from the mainline so development stays focused on the TUI Agent route.
 
 ## Install
 
@@ -53,13 +53,11 @@ mendcode fix "pytest 失败了，请定位并修复" --repo . --test "python -m 
 ```
 
 Compatibility and smoke commands:
+Smoke commands:
 
 ```bash
 mendcode version
 mendcode health
-mendcode task validate data/tasks/demo.json
-mendcode task show data/tasks/demo.json
-mendcode task run data/tasks/demo.json
 ```
 
 In this nested worktree development setup, `python -m app.cli.main ...` is the authoritative invocation path. The `mendcode ...` examples remain valid for normal installed usage, but the branch-accurate commands are:
@@ -68,17 +66,6 @@ In this nested worktree development setup, `python -m app.cli.main ...` is the a
 python -m app.cli.main version
 python -m app.cli.main health
 python -m app.cli.main fix "pytest 失败了，请定位并修复" --repo . --test "python -m pytest -q"
-python -m app.cli.main task validate data/tasks/demo.json
-python -m app.cli.main task show data/tasks/demo.json
-python -m app.cli.main task run data/tasks/demo.json
 ```
 
-`fix` creates a per-run workspace under `.worktrees/preview-<id>/`, runs the supplied verification command, extracts pytest-style failure details, and records trace output. It is a transitional slice toward the TUI Agent.
-
-`task run` remains as a fixed-flow compatibility demo using structured `entry_artifacts`.
-
-## API
-
-```bash
-uvicorn app.api.server:app --reload
-```
+`fix` currently runs a minimal Agent loop over repository status, project detection, and the supplied verification command. It extracts pytest-style failure details and records trace output. Worktree-isolated patching is the next Agent loop milestone.

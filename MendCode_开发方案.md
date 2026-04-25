@@ -26,25 +26,32 @@ mendcode
 
 ## 3. 当前已完成能力
 
-截至 2026-04-24，已完成能力主要是底座：
+截至 2026-04-25，已完成能力主要是新 TUI Agent 路线的底座：
 
 - CLI 基础命令
-- schema 与运行状态模型
+- `MendCodeAction` / `Observation` 动作协议
+- 最小 `AgentLoop`
+- Permission Gate
+- Safe / Guided / Full / Custom 权限模式
 - worktree 隔离
 - command policy / executor
 - verification command 执行
 - JSONL trace
 - `read_file`
 - `search_code`
-- `apply_patch`
-- fixed-flow demo 兼容能力
-- fixed-flow 工具权限检查
-- batch eval 辅助回归能力
-- demo task suite 与 Python unit-fix fixture
+- `apply_patch_to_worktree` 底层 patch helper
 - `mendcode fix "<problem>" --test "<command>"` 过渡入口
 - pytest 失败日志解析
 
-这些能力不等于最终产品，只是后续 TUI Agent 的执行底座。
+已删除的旧主线：
+
+- task JSON 入口
+- 固定流程补丁 demo
+- batch eval 平台
+- HTTP health API
+- demo task suite 产品数据
+
+这些删除是为了让后续开发只围绕 TUI Agent 主线推进。
 
 ---
 
@@ -52,13 +59,9 @@ mendcode
 
 距离 TUI Agent MVP 还缺：
 
-- `MendCodeAction` 统一动作协议
-- `Observation` 结果协议
-- Permission Gate
-- Safe / Guided / Full / Custom 权限模式
 - LLM Provider 抽象
 - OpenAI / Anthropic / OpenAI-compatible adapter
-- 动态 tool-use loop
+- 真实模型驱动的动态 tool-use loop
 - patch proposal schema
 - worktree 内 patch apply 与 verification gate 串联
 - diff summary
@@ -82,16 +85,16 @@ mendcode
 
 禁止重新回到：
 
-- 让用户写 `old_text/new_text`
+- 让用户提供手工文本替换补丁
 - 让 JSON task 成为主要用户入口
-- 继续扩 fixed-flow demo 当产品主线
+- 继续扩固定流程 demo 当产品主线
 - 先做复杂 UI 而不做 Agent loop
 - 先做多 Agent、平台化 eval 或企业权限
 
 说明：
 
-- `task run`、fixed-flow demo、batch eval 只作为兼容入口和回归验证工具保留。
-- 这些能力可以帮助验证底座稳定性，但不改变 `mendcode` TUI Agent 的主线优先级。
+- 旧 task JSON、固定流程 demo、batch eval、API 服务化入口已经从主线代码中删除。
+- 后续如需回归验证，应围绕 Agent loop 重新建立测试 fixture，不恢复旧产品入口。
 
 ---
 
@@ -167,13 +170,11 @@ mendcode
 - Full Mode 允许已知工具
 - Custom Mode 默认要求显式配置
 - 已支持把需要确认的 tool call 转成 `user_confirmation_request`
-- 已把 fixed-flow runner 中的 `search_code` / `read_file` / `apply_patch` 纳入 `allowed_tools` 检查
-- runner 已能用 `bootstrap` / `locate` / `inspect` / `patch` / `verify` / `summarize` 记录更精确阶段
+- 已接入最小 Agent loop，能把需要确认的工具转成 confirmation action 和 rejected observation
 
 当前尚未完成：
 
 - 主工作区 apply 的独立 action 和高风险判定
-- Permission Gate 与 Agent loop runner 的串联
 - 用户确认结果回写 observation
 - 自定义权限配置文件
 
@@ -285,7 +286,7 @@ mendcode
 - Agent 能完成一次 worktree 内修复尝试
 - 用户可以基于工程审查摘要决定 apply 或 discard
 - 用户不需要写 JSON
-- 用户不需要提供 `old_text/new_text`
+- 用户不需要提供手工文本替换补丁
 - Agent 每一步工具调用都有摘要
 - 修复结果必须有验证命令证明
 

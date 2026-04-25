@@ -37,12 +37,12 @@ def _failed_apply_patch(
 def apply_patch(
     workspace_path: Path,
     relative_path: str,
-    old_text: str,
-    new_text: str,
+    target_text: str,
+    replacement_text: str,
     replace_all: bool = False,
 ) -> ToolResult:
-    if old_text == "":
-        return _reject_apply_patch(workspace_path, relative_path, "old_text must not be empty")
+    if target_text == "":
+        return _reject_apply_patch(workspace_path, relative_path, "target_text must not be empty")
 
     try:
         target = resolve_workspace_file(workspace_path, relative_path)
@@ -54,7 +54,7 @@ def apply_patch(
     except (UnicodeDecodeError, OSError) as exc:
         return _failed_apply_patch(workspace_path, relative_path, str(exc))
 
-    occurrences = content.count(old_text)
+    occurrences = content.count(target_text)
     if occurrences == 0:
         return _reject_apply_patch(workspace_path, relative_path, "target text not found")
     if occurrences > 1 and not replace_all:
@@ -65,7 +65,7 @@ def apply_patch(
         )
 
     replacements_applied = occurrences if replace_all else 1
-    updated_content = content.replace(old_text, new_text, replacements_applied)
+    updated_content = content.replace(target_text, replacement_text, replacements_applied)
 
     try:
         target.write_text(updated_content, encoding="utf-8")

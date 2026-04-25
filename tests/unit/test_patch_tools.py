@@ -12,8 +12,8 @@ def test_apply_patch_replaces_single_match(tmp_path: Path) -> None:
     result = apply_patch(
         workspace_path=workspace_path,
         relative_path="notes.txt",
-        old_text="beta",
-        new_text="gamma",
+        target_text="beta",
+        replacement_text="gamma",
     )
 
     assert result.status == "passed"
@@ -25,7 +25,7 @@ def test_apply_patch_replaces_single_match(tmp_path: Path) -> None:
     assert target.read_text(encoding="utf-8") == "alpha\ngamma\n"
 
 
-def test_apply_patch_rejects_empty_old_text(tmp_path: Path) -> None:
+def test_apply_patch_rejects_empty_target_text(tmp_path: Path) -> None:
     workspace_path = tmp_path / "workspace"
     workspace_path.mkdir()
     (workspace_path / "notes.txt").write_text("alpha\nbeta\n", encoding="utf-8")
@@ -33,12 +33,12 @@ def test_apply_patch_rejects_empty_old_text(tmp_path: Path) -> None:
     result = apply_patch(
         workspace_path=workspace_path,
         relative_path="notes.txt",
-        old_text="",
-        new_text="gamma",
+        target_text="",
+        replacement_text="gamma",
     )
 
     assert result.status == "rejected"
-    assert result.error_message == "old_text must not be empty"
+    assert result.error_message == "target_text must not be empty"
 
 
 def test_apply_patch_rejects_missing_target_text(tmp_path: Path) -> None:
@@ -50,8 +50,8 @@ def test_apply_patch_rejects_missing_target_text(tmp_path: Path) -> None:
     result = apply_patch(
         workspace_path=workspace_path,
         relative_path="notes.txt",
-        old_text="delta",
-        new_text="gamma",
+        target_text="delta",
+        replacement_text="gamma",
     )
 
     assert result.status == "rejected"
@@ -68,8 +68,8 @@ def test_apply_patch_rejects_ambiguous_match_without_replace_all(tmp_path: Path)
     result = apply_patch(
         workspace_path=workspace_path,
         relative_path="notes.txt",
-        old_text="beta",
-        new_text="gamma",
+        target_text="beta",
+        replacement_text="gamma",
     )
 
     assert result.status == "rejected"
@@ -86,8 +86,8 @@ def test_apply_patch_replaces_all_matches_when_requested(tmp_path: Path) -> None
     result = apply_patch(
         workspace_path=workspace_path,
         relative_path="notes.txt",
-        old_text="beta",
-        new_text="gamma",
+        target_text="beta",
+        replacement_text="gamma",
         replace_all=True,
     )
 

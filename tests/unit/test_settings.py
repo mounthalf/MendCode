@@ -11,9 +11,7 @@ def test_settings_default_paths(monkeypatch, tmp_path):
 
     assert settings.project_root == tmp_path
     assert settings.data_dir == tmp_path / "data"
-    assert settings.tasks_dir == tmp_path / "data" / "tasks"
     assert settings.traces_dir == tmp_path / "data" / "traces"
-    assert settings.evals_dir == tmp_path / "data" / "evals"
 
 
 def test_settings_uses_default_project_root_when_env_unset(monkeypatch):
@@ -33,9 +31,7 @@ def test_ensure_data_directories_creates_missing_directories(monkeypatch, tmp_pa
 
     assert created == {
         "data_dir": tmp_path / "data",
-        "tasks_dir": tmp_path / "data" / "tasks",
         "traces_dir": tmp_path / "data" / "traces",
-        "evals_dir": tmp_path / "data" / "evals",
         "workspace_root": tmp_path / ".worktrees",
     }
     assert all(path.exists() for path in created.values())
