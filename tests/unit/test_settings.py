@@ -81,6 +81,62 @@ def test_settings_reads_openai_compatible_provider_env(monkeypatch, tmp_path):
     assert settings.provider_timeout_seconds == 12
 
 
+def test_settings_reads_provider_values_from_project_env_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.delenv("MENDCODE_PROVIDER", raising=False)
+    monkeypatch.delenv("MENDCODE_MODEL", raising=False)
+    monkeypatch.delenv("MENDCODE_BASE_URL", raising=False)
+    monkeypatch.delenv("MENDCODE_API_KEY", raising=False)
+    monkeypatch.delenv("MENDCODE_PROVIDER_TIMEOUT_SECONDS", raising=False)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "MENDCODE_PROVIDER=openai-compatible",
+                "MENDCODE_MODEL=env-file-model",
+                "MENDCODE_BASE_URL=https://env-file.test/v1",
+                "MENDCODE_API_KEY=env-file-key",
+                "MENDCODE_PROVIDER_TIMEOUT_SECONDS=7",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = get_settings()
+
+    assert settings.provider == "openai-compatible"
+    assert settings.provider_model == "env-file-model"
+    assert settings.provider_base_url == "https://env-file.test/v1"
+    assert settings.provider_api_key == "env-file-key"
+    assert settings.provider_timeout_seconds == 7
+
+
+def test_settings_environment_values_override_project_env_file(monkeypatch, tmp_path):
+    monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("MENDCODE_MODEL", "shell-model")
+    monkeypatch.delenv("MENDCODE_PROVIDER", raising=False)
+    monkeypatch.delenv("MENDCODE_BASE_URL", raising=False)
+    monkeypatch.delenv("MENDCODE_API_KEY", raising=False)
+    monkeypatch.delenv("MENDCODE_PROVIDER_TIMEOUT_SECONDS", raising=False)
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "MENDCODE_PROVIDER=openai-compatible",
+                "MENDCODE_MODEL=env-file-model",
+                "MENDCODE_BASE_URL=https://env-file.test/v1",
+                "MENDCODE_API_KEY=env-file-key",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = get_settings()
+
+    assert settings.provider == "openai-compatible"
+    assert settings.provider_model == "shell-model"
+    assert settings.provider_base_url == "https://env-file.test/v1"
+    assert settings.provider_api_key == "env-file-key"
+
+
 def test_ensure_data_directories_creates_workspace_root(monkeypatch, tmp_path):
     monkeypatch.setenv("MENDCODE_PROJECT_ROOT", str(tmp_path))
     settings = get_settings()

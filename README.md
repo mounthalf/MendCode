@@ -75,10 +75,19 @@ python -m app.cli.main fix "pytest 失败了，请定位并修复" --repo . --te
 To try an OpenAI-compatible JSON Action provider, configure:
 
 ```bash
-export MENDCODE_PROVIDER=openai-compatible
-export MENDCODE_MODEL="<model>"
-export MENDCODE_BASE_URL="<base-url>"
-export MENDCODE_API_KEY="<key>"
+cp .env.example .env
 ```
+
+Then edit `.env`:
+
+```dotenv
+MENDCODE_PROVIDER=openai-compatible
+MENDCODE_MODEL="<model>"
+MENDCODE_BASE_URL="<base-url>"
+MENDCODE_API_KEY="<key>"
+MENDCODE_PROVIDER_TIMEOUT_SECONDS=60
+```
+
+Shell environment variables override values from `.env`. The local `.env` file is ignored by git; keep real API keys out of commits.
 
 This provider path asks the model for one MendCode Action JSON object per step. It uses a bounded prompt context with repair guidance for inspecting failures, proposing unified diff patches, rerunning verification, and avoiding unverified completion. It does not use native tool-calling formats yet.

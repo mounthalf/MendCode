@@ -1,3 +1,4 @@
+.env
 .worktrees/
 data/traces/
 data/evals/
