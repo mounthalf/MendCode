@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import pytest
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 import app.tools as tool_exports
+import app.tools.structured as structured
 from app.config.settings import Settings
 from app.schemas.agent_action import Observation
 from app.tools.structured import (
@@ -119,6 +120,43 @@ def test_tool_invocation_requires_non_empty_name() -> None:
         ToolInvocation(id=None, name="", args={}, source="json_action")
 
 
+def test_tool_names_accept_letters_digits_underscores_and_dashes() -> None:
+    spec = ToolSpec(
+        name="read_file-1",
+        description="Read an example path.",
+        args_model=ExampleArgs,
+        risk_level=ToolRisk.READ_ONLY,
+        executor=execute_example,
+    )
+    invocation = ToolInvocation(
+        id=None,
+        name="read_file-1",
+        args={},
+        source="json_action",
+    )
+
+    assert spec.name == "read_file-1"
+    assert invocation.name == "read_file-1"
+
+
+def test_tool_spec_rejects_names_with_spaces() -> None:
+    with pytest.raises(ValidationError, match="tool name"):
+        ToolSpec(
+            name="read file",
+            description="Read an example path.",
+            args_model=ExampleArgs,
+            risk_level=ToolRisk.READ_ONLY,
+            executor=execute_example,
+        )
+
+
+def test_tool_invocation_rejects_names_longer_than_64_characters() -> None:
+    with pytest.raises(ValidationError, match="tool name"):
+        ToolInvocation(id=None, name="a" * 65, args={}, source="json_action")
+
+
 def test_package_exports_structured_tool_aliases() -> None:
     assert "ToolExecutor" in tool_exports.__all__
     assert "ToolInvocationSource" in tool_exports.__all__
+    assert tool_exports.ToolExecutor is structured.ToolExecutor
+    assert tool_exports.ToolInvocationSource is structured.ToolInvocationSource

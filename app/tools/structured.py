@@ -1,3 +1,4 @@
+import re
 from collections.abc import Callable
 from enum import StrEnum
 from pathlib import Path
@@ -8,8 +9,17 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from app.config.settings import Settings
 from app.schemas.agent_action import Observation
 
-
 ToolInvocationSource = Literal["openai_tool_call", "json_action"]
+_TOOL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def validate_tool_name(name: str) -> str:
+    if not _TOOL_NAME_PATTERN.fullmatch(name):
+        raise ValueError(
+            "tool name must contain only letters, digits, underscores, "
+            "and dashes, and be 1-64 characters long",
+        )
+    return name
 
 
 class ToolRisk(StrEnum):
@@ -30,8 +40,7 @@ class ToolInvocation(BaseModel):
 
     @model_validator(mode="after")
     def validate_name(self) -> "ToolInvocation":
-        if not self.name.strip():
-            raise ValueError("tool invocation name must not be empty")
+        validate_tool_name(self.name)
         return self
 
 
@@ -57,8 +66,7 @@ class ToolSpec(BaseModel):
 
     @model_validator(mode="after")
     def validate_spec(self) -> "ToolSpec":
-        if not self.name.strip():
-            raise ValueError("tool name must not be empty")
+        validate_tool_name(self.name)
         if not self.description.strip():
             raise ValueError("tool description must not be empty")
         return self
