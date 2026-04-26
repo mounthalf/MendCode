@@ -79,12 +79,14 @@ class OpenAIChatCompletionsClient:
         tools: list[dict[str, object]] | None = None,
         timeout_seconds: int,
     ) -> str | OpenAICompletion:
-        response = self._client.chat.completions.create(
-            model=model,
-            messages=[message.model_dump(exclude_none=True) for message in messages],
-            tools=tools,
-            timeout=timeout_seconds,
-        )
+        request_kwargs: dict[str, object] = {
+            "model": model,
+            "messages": [message.model_dump(exclude_none=True) for message in messages],
+            "timeout": timeout_seconds,
+        }
+        if tools is not None:
+            request_kwargs["tools"] = tools
+        response = self._client.chat.completions.create(**request_kwargs)
         message = response.choices[0].message
         if tools is None:
             return message.content or ""

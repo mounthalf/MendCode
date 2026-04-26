@@ -296,7 +296,7 @@ def test_openai_chat_completions_client_returns_text_when_no_tools_requested() -
     )
 
     assert response == "hello"
-    assert sdk_client.completions.calls[0]["tools"] is None
+    assert "tools" not in sdk_client.completions.calls[0]
 
 
 def test_openai_chat_completions_client_parses_sdk_tool_calls() -> None:
