@@ -292,6 +292,11 @@ def test_agent_loop_executes_native_search_code_tool(tmp_path: Path) -> None:
 def test_agent_loop_executes_structured_apply_patch_action(tmp_path: Path) -> None:
     target = tmp_path / "notes.txt"
     target.write_text("alpha\n", encoding="utf-8")
+    command = (
+        f"{PYTHON} -c "
+        "\"from pathlib import Path; "
+        "raise SystemExit(0 if Path('notes.txt').read_text() == 'beta\\\\n' else 1)\""
+    )
     patch = "\n".join(
         [
             "diff --git a/notes.txt b/notes.txt",
@@ -309,12 +314,19 @@ def test_agent_loop_executes_structured_apply_patch_action(tmp_path: Path) -> No
         AgentLoopInput(
             repo_path=tmp_path,
             problem_statement="patch file",
+            verification_commands=[command],
             actions=[
                 {
                     "type": "tool_call",
                     "action": "apply_patch",
                     "reason": "edit notes",
                     "args": {"patch": patch},
+                },
+                {
+                    "type": "tool_call",
+                    "action": "run_command",
+                    "reason": "verify notes",
+                    "args": {"command": command},
                 },
                 {"type": "final_response", "status": "completed", "summary": "done"},
             ],
@@ -324,6 +336,7 @@ def test_agent_loop_executes_structured_apply_patch_action(tmp_path: Path) -> No
 
     assert result.status == "completed"
     assert result.steps[0].observation.status == "succeeded"
+    assert result.steps[1].observation.status == "succeeded"
     assert target.read_text(encoding="utf-8") == "beta\n"
 
 
@@ -976,6 +989,186 @@ def test_agent_loop_applies_patch_proposal_in_worktree_then_verifies(
     assert result.steps[1].observation.status == "succeeded"
     assert result.steps[1].observation.payload["files_to_modify"] == ["calculator.py"]
     assert "calculator.py" in result.steps[3].observation.payload["diff_stat"]
+
+
+def test_agent_loop_native_apply_patch_can_complete_after_failed_verification(
+    tmp_path: Path,
+) -> None:
+    repo_path = init_git_repo(tmp_path)
+    target = repo_path / "calculator.py"
+    target.write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "calculator.py"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "add calculator"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    command = (
+        f"{PYTHON} -c "
+        "\"import calculator; "
+        "raise SystemExit(0 if calculator.add(2, 3) == 5 else 1)\""
+    )
+    patch = """diff --git a/calculator.py b/calculator.py
+--- a/calculator.py
++++ b/calculator.py
+@@ -1,2 +1,2 @@
+ def add(a, b):
+-    return a - b
++    return a + b
+"""
+    provider = NativeToolProvider(
+        [
+            [
+                ToolInvocation(
+                    id="call_verify_fail",
+                    name="run_command",
+                    args={"command": command},
+                    source="openai_tool_call",
+                )
+            ],
+            [
+                ToolInvocation(
+                    id="call_patch",
+                    name="apply_patch",
+                    args={"patch": patch},
+                    source="openai_tool_call",
+                )
+            ],
+            [
+                ToolInvocation(
+                    id="call_verify_pass",
+                    name="run_command",
+                    args={"command": command},
+                    source="openai_tool_call",
+                )
+            ],
+            {
+                "type": "final_response",
+                "status": "completed",
+                "summary": "verification passed",
+            },
+        ]
+    )
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=repo_path,
+            problem_statement="fix add",
+            provider=provider,
+            verification_commands=[command],
+            step_budget=6,
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "completed"
+    assert result.steps[0].observation.status == "failed"
+    assert result.steps[1].observation.status == "succeeded"
+    assert result.steps[2].observation.status == "succeeded"
+    assert target.read_text(encoding="utf-8") == "def add(a, b):\n    return a + b\n"
+
+
+def test_agent_loop_native_apply_patch_still_blocks_later_failed_observation(
+    tmp_path: Path,
+) -> None:
+    repo_path = init_git_repo(tmp_path)
+    target = repo_path / "calculator.py"
+    target.write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", "calculator.py"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "commit", "-m", "add calculator"],
+        cwd=repo_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    command = (
+        f"{PYTHON} -c "
+        "\"import calculator; "
+        "raise SystemExit(0 if calculator.add(2, 3) == 5 else 1)\""
+    )
+    later_failing_command = f"{PYTHON} -c 'raise SystemExit(1)'"
+    patch = """diff --git a/calculator.py b/calculator.py
+--- a/calculator.py
++++ b/calculator.py
+@@ -1,2 +1,2 @@
+ def add(a, b):
+-    return a - b
++    return a + b
+"""
+    provider = NativeToolProvider(
+        [
+            [
+                ToolInvocation(
+                    id="call_patch",
+                    name="apply_patch",
+                    args={"patch": patch},
+                    source="openai_tool_call",
+                )
+            ],
+            [
+                ToolInvocation(
+                    id="call_verify_pass",
+                    name="run_command",
+                    args={"command": command},
+                    source="openai_tool_call",
+                )
+            ],
+            [
+                ToolInvocation(
+                    id="call_verify_fail",
+                    name="run_command",
+                    args={"command": later_failing_command},
+                    source="openai_tool_call",
+                )
+            ],
+            [
+                ToolInvocation(
+                    id="call_list",
+                    name="list_dir",
+                    args={"path": "."},
+                    source="openai_tool_call",
+                )
+            ],
+            {
+                "type": "final_response",
+                "status": "completed",
+                "summary": "verification passed",
+            },
+        ]
+    )
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=repo_path,
+            problem_statement="fix add",
+            provider=provider,
+            verification_commands=[command, later_failing_command],
+            step_budget=7,
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "failed"
+    assert result.summary == "Agent loop ended with failed observations"
+    assert result.steps[0].observation.status == "succeeded"
+    assert result.steps[1].observation.status == "succeeded"
+    assert result.steps[2].observation.status == "failed"
+    assert result.steps[3].observation.status == "succeeded"
 
 
 def test_agent_loop_does_not_complete_when_post_patch_failure_follows_verification(

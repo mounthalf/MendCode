@@ -40,6 +40,32 @@ class FakeClient:
         return OpenAICompletion(content=str(self.response or ""), tool_calls=[])
 
 
+class ToolsUnsupportedClient:
+    def __init__(self, fallback_response: str) -> None:
+        self.fallback_response = fallback_response
+        self.calls: list[dict[str, object]] = []
+
+    def complete(
+        self,
+        *,
+        model: str,
+        messages: list[ChatMessage],
+        timeout_seconds: int,
+        tools: list[dict[str, object]] | None = None,
+    ) -> OpenAICompletion | str:
+        call: dict[str, object] = {
+            "model": model,
+            "messages": messages,
+            "timeout_seconds": timeout_seconds,
+        }
+        if tools is not None:
+            call["tools"] = tools
+        self.calls.append(call)
+        if tools is not None:
+            raise RuntimeError("Unsupported parameter: tools")
+        return self.fallback_response
+
+
 class FakeSDKFunction:
     def __init__(self, *, name: str, arguments: str) -> None:
         self.name = name
@@ -173,6 +199,32 @@ def test_openai_compatible_provider_sends_registered_tools_to_client() -> None:
     provider.next_action(step_input())
 
     assert client.calls[0]["tools"] == default_tool_registry().openai_tools()
+
+
+def test_openai_compatible_provider_falls_back_when_tools_are_unsupported() -> None:
+    client = ToolsUnsupportedClient(
+        '{"type":"tool_call","action":"repo_status","reason":"inspect","args":{}}'
+    )
+    provider = OpenAICompatibleAgentProvider(
+        model="test-model",
+        api_key="secret-key",
+        base_url="https://example.test/v1",
+        timeout_seconds=12,
+        client=client,
+    )
+
+    response = provider.next_action(step_input())
+
+    assert response.status == "succeeded"
+    assert response.action == {
+        "type": "tool_call",
+        "action": "repo_status",
+        "reason": "inspect",
+        "args": {},
+    }
+    assert len(client.calls) == 2
+    assert client.calls[0]["tools"] == default_tool_registry().openai_tools()
+    assert "tools" not in client.calls[1]
 
 
 def test_openai_compatible_provider_returns_native_tool_invocation() -> None:

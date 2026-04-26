@@ -1,4 +1,5 @@
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -331,6 +332,9 @@ def _apply_patch(args: ApplyPatchArgs, context: ToolExecutionContext) -> Observa
             completed.stderr.strip() or "git apply failed",
             payload=payload,
         )
+    for pycache_path in context.workspace_path.rglob("__pycache__"):
+        if pycache_path.is_dir():
+            shutil.rmtree(pycache_path, ignore_errors=True)
     return Observation(status="succeeded", summary="Applied patch", payload=payload)
 
 

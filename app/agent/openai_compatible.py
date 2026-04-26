@@ -163,14 +163,28 @@ class OpenAICompatibleAgentProvider:
         )
 
     def next_action(self, step_input: AgentProviderStepInput) -> ProviderResponse:
+        messages = build_provider_messages(step_input, secret_values=[self._api_key])
         try:
             completion = self._client.complete(
                 model=self._model,
-                messages=build_provider_messages(step_input, secret_values=[self._api_key]),
+                messages=messages,
                 tools=self._tool_registry.openai_tools(),
                 timeout_seconds=self._timeout_seconds,
             )
         except Exception as exc:
+            if _looks_like_unsupported_tools_error(exc):
+                try:
+                    content = self._client.complete(
+                        model=self._model,
+                        messages=messages,
+                        timeout_seconds=self._timeout_seconds,
+                    )
+                except Exception as retry_exc:
+                    return ProviderResponse.failed(
+                        "Provider request failed: "
+                        f"{redact_secret(str(retry_exc), self._api_key)}"
+                    )
+                return _response_from_action_text(content)
             return ProviderResponse.failed(
                 f"Provider request failed: {redact_secret(str(exc), self._api_key)}"
             )
@@ -203,15 +217,33 @@ class OpenAICompatibleAgentProvider:
                 except ValidationError:
                     return ProviderResponse.failed("Provider returned invalid tool call")
             return ProviderResponse(status="succeeded", tool_invocations=tool_invocations)
-        content = completion.content
-        if not content.strip():
-            return ProviderResponse.failed("Provider returned empty response")
-        try:
-            payload = extract_action_json(content)
-        except (json.JSONDecodeError, ValueError):
-            return ProviderResponse.failed("Provider returned invalid JSON action")
-        try:
-            parse_mendcode_action(payload)
-        except ValidationError:
-            return ProviderResponse.failed("Provider returned invalid MendCode action")
-        return ProviderResponse(status="succeeded", actions=[payload])
+        return _response_from_action_text(completion.content)
+
+
+def _looks_like_unsupported_tools_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    if "tool" not in message:
+        return False
+    unsupported_markers = (
+        "unsupported parameter",
+        "unknown parameter",
+        "unrecognized request argument",
+        "not support",
+        "not supported",
+        "does not support",
+    )
+    return any(marker in message for marker in unsupported_markers)
+
+
+def _response_from_action_text(content: str) -> ProviderResponse:
+    if not content.strip():
+        return ProviderResponse.failed("Provider returned empty response")
+    try:
+        payload = extract_action_json(content)
+    except (json.JSONDecodeError, ValueError):
+        return ProviderResponse.failed("Provider returned invalid JSON action")
+    try:
+        parse_mendcode_action(payload)
+    except ValidationError:
+        return ProviderResponse.failed("Provider returned invalid MendCode action")
+    return ProviderResponse(status="succeeded", actions=[payload])

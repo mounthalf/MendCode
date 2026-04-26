@@ -835,11 +835,22 @@ def run_agent_loop(loop_input: AgentLoopInput, settings: Settings) -> AgentLoopR
 
     def apply_final_response_gate(handled: _HandledAction) -> tuple[AgentLoopStatus, str]:
         if isinstance(handled.step.action, FinalResponseAction):
+            def is_successful_patch_boundary(step: AgentStep) -> bool:
+                if step.observation.status != "succeeded":
+                    return False
+                if step.action.type == "patch_proposal":
+                    return True
+                return (
+                    step.action.type == "tool_call"
+                    and getattr(step.action, "action", None)
+                    in {"apply_patch", "apply_patch_to_worktree"}
+                )
+
             last_patch_index = next(
                 (
                     index
                     for index, step in reversed(list(enumerate(steps[:-1])))
-                    if step.action.type == "patch_proposal"
+                    if is_successful_patch_boundary(step)
                 ),
                 None,
             )

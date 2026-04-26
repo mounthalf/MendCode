@@ -87,14 +87,14 @@ mendcode
 
 - [x] LLM Provider 抽象底座
 - [x] OpenAI-compatible JSON Action adapter
-- [x] OpenAI 原生 tool-call registry 支持
+- [x] OpenAI-compatible 原生 tool-call registry 支持
 - [ ] Anthropic 原生 adapter
 - [x] Provider 错误降级为 observation
 - [x] Provider-driven 动态 tool-use loop 底座
 - [x] 真实 provider 的 prompt/action 契约底座
 - [ ] 真实模型端到端修复稳定性验证
 - [x] patch proposal schema
-- [x] 真实 LLM 可通过 OpenAI tool calls 调用结构化工具，JSON Action 保留为 fallback
+- [x] 真实 LLM 可通过 OpenAI-compatible tool calls 调用结构化工具，JSON Action 保留为 fallback
 - [ ] 真实 LLM 输出 patch proposal 稳定性验证
 - [x] diff summary 与 TUI review 收尾
 - [x] 最小单轮 TUI-shaped 入口
@@ -230,7 +230,7 @@ mendcode
 交付：
 
 - [x] Provider env config
-- [x] OpenAI adapter 原生 tool-call registry 支持
+- [ ] OpenAI adapter
 - [ ] Anthropic adapter
 - [x] OpenAI-compatible adapter
 - [x] JSON action fallback
@@ -248,7 +248,7 @@ mendcode
 - [x] API key 不写入项目仓库，provider prompt 支持 secret redaction
 - [x] OpenAI-compatible provider 可发送 ToolRegistry 生成的 tools schema，并解析原生 `tool_calls`
 - [x] Prompt context 可把原生 tool observation 写回 OpenAI assistant/tool message
-- [x] JSON Action 仍作为不支持原生 tool call 或模型降级时的 fallback
+- [x] JSON Action 仍作为不支持原生 tool call、模型降级或 endpoint 明确拒绝 `tools` 参数时的 fallback
 
 验证证据：
 

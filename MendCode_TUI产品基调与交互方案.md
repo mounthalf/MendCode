@@ -233,7 +233,7 @@ anthropic
 openai-compatible
 ```
 
-当前已落地的是 `openai-compatible` 的 Hybrid ToolRegistry provider：优先向支持的模型发送 OpenAI tools schema 并解析原生 `tool_calls`，模型可调用 `read_file` / `list_dir` / `glob_file_search` / `rg` / `git` / `run_shell_command` / `run_command` / `apply_patch` 等结构化工具。JSON Action 仍保留为不支持原生 tool call 或模型降级时的 fallback。MendCode 继续负责 schema 校验、权限判断、工具执行和 trace，工具调用不会绕过 Guided Mode 的确认边界。Anthropic 原生 tool calling 适配仍未完成。
+当前已落地的是 `openai-compatible` 的 Hybrid ToolRegistry provider：优先向支持的模型发送 OpenAI tools schema 并解析原生 `tool_calls`，模型可调用 `read_file` / `list_dir` / `glob_file_search` / `rg` / `search_code` / `git` / `run_shell_command` / `run_command` / `apply_patch` 等结构化工具。JSON Action 仍保留为不支持原生 tool call、模型降级或 endpoint 明确拒绝 `tools` 参数时的 fallback。MendCode 继续负责 schema 校验、权限判断、工具执行和 trace，工具调用不会绕过 Guided Mode 的确认边界。Anthropic 原生 tool calling 适配仍未完成。
 
 验证证据：
 
@@ -341,7 +341,7 @@ Action 类型：
 - `user_confirmation_request`
 - `final_response`
 
-Provider 层负责把 OpenAI tool call、Anthropic tool use、OpenAI-compatible JSON text 统一归一化为 MendCode Action。当前已落地 OpenAI-compatible provider 的原生 `tool_calls` 解析和 JSON Action fallback。
+Provider 层负责把 OpenAI-compatible tool call、Anthropic tool use、OpenAI-compatible JSON text 统一归一化为 MendCode Action。当前已落地 OpenAI-compatible provider 的原生 `tool_calls` 解析和 JSON Action fallback。
 
 业务层只处理：
 
