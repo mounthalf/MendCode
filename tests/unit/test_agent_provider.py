@@ -1,3 +1,5 @@
+import pytest
+
 from app.agent.provider import (
     AgentObservationRecord,
     AgentProviderInput,
@@ -6,6 +8,7 @@ from app.agent.provider import (
     ScriptedAgentProvider,
 )
 from app.schemas.agent_action import Observation, ToolCallAction
+from app.tools.structured import ToolInvocation
 
 
 def test_scripted_provider_builds_initial_fix_actions() -> None:
@@ -244,3 +247,36 @@ def test_scripted_provider_rejects_failure_location_without_file_path() -> None:
 
     assert response.status == "failed"
     assert response.observation.error_message == "failure insight did not include a file path"
+
+
+def test_provider_response_accepts_native_tool_invocations() -> None:
+    response = ProviderResponse(
+        status="succeeded",
+        tool_invocations=[
+            ToolInvocation(
+                id="call_1",
+                name="read_file",
+                args={"path": "README.md"},
+                source="openai_tool_call",
+            )
+        ],
+    )
+
+    assert response.tool_invocations[0].name == "read_file"
+    assert response.actions == []
+
+
+def test_provider_response_rejects_actions_and_tool_invocations_together() -> None:
+    with pytest.raises(ValueError, match="must not mix actions and tool invocations"):
+        ProviderResponse(
+            status="succeeded",
+            actions=[{"type": "final_response", "status": "completed", "summary": "done"}],
+            tool_invocations=[
+                ToolInvocation(
+                    id="call_1",
+                    name="read_file",
+                    args={"path": "README.md"},
+                    source="openai_tool_call",
+                )
+            ],
+        )

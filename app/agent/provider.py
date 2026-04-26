@@ -3,6 +3,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.agent_action import MendCodeAction, Observation
+from app.tools.structured import ToolInvocation
 
 ProviderStatus = str
 
@@ -19,6 +20,7 @@ class AgentObservationRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     action: MendCodeAction | None = None
+    tool_invocation: ToolInvocation | None = None
     observation: Observation
 
 
@@ -38,6 +40,7 @@ class ProviderResponse(BaseModel):
 
     status: ProviderStatus
     actions: list[dict[str, object]] = Field(default_factory=list)
+    tool_invocations: list[ToolInvocation] = Field(default_factory=list)
     observation: Observation | None = None
 
     @property
@@ -58,8 +61,13 @@ class ProviderResponse(BaseModel):
 
     @model_validator(mode="after")
     def validate_response_shape(self) -> "ProviderResponse":
-        if self.status == "succeeded" and not self.actions:
-            raise ValueError("succeeded provider responses require actions")
+        if self.status == "succeeded":
+            if self.actions and self.tool_invocations:
+                raise ValueError("provider responses must not mix actions and tool invocations")
+            if not self.actions and not self.tool_invocations:
+                raise ValueError(
+                    "succeeded provider responses require either actions or tool invocations"
+                )
         if self.status == "failed" and self.observation is None:
             raise ValueError("failed provider responses require observation")
         return self
