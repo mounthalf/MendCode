@@ -1,5 +1,6 @@
 """Tool schema and registry exports."""
 
+from app.tools.registry import default_tool_registry
 from app.tools.schemas import ToolResult, ToolStatus
 from app.tools.structured import (
     ToolExecutionContext,
@@ -12,6 +13,7 @@ from app.tools.structured import (
 )
 
 __all__ = [
+    "default_tool_registry",
     "ToolExecutor",
     "ToolExecutionContext",
     "ToolInvocation",

@@ -7,6 +7,7 @@ import app.tools as tool_exports
 import app.tools.structured as structured
 from app.config.settings import Settings
 from app.schemas.agent_action import Observation
+from app.tools.registry import default_tool_registry
 from app.tools.structured import (
     ToolExecutionContext,
     ToolInvocation,
@@ -160,3 +161,53 @@ def test_package_exports_structured_tool_aliases() -> None:
     assert "ToolInvocationSource" in tool_exports.__all__
     assert tool_exports.ToolExecutor is structured.ToolExecutor
     assert tool_exports.ToolInvocationSource is structured.ToolInvocationSource
+
+
+def test_default_registry_contains_read_only_tools() -> None:
+    registry = default_tool_registry()
+
+    assert registry.names()[:4] == ["glob_file_search", "list_dir", "read_file", "rg"]
+
+
+def test_default_registry_generates_openai_schemas() -> None:
+    registry = default_tool_registry()
+
+    tools = registry.openai_tools()
+
+    names = [tool["function"]["name"] for tool in tools]
+    assert "read_file" in names
+    read_file_schema = next(tool for tool in tools if tool["function"]["name"] == "read_file")
+    assert "path" in read_file_schema["function"]["parameters"]["properties"]
+
+
+def test_registry_executes_read_file_tool(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("hello\n", encoding="utf-8")
+    registry = default_tool_registry()
+    context = ToolExecutionContext(
+        workspace_path=tmp_path,
+        settings=settings_for(tmp_path),
+        verification_commands=[],
+    )
+
+    observation = registry.get("read_file").execute({"path": "README.md"}, context)
+
+    assert observation.status == "succeeded"
+    assert observation.payload["relative_path"] == "README.md"
+    assert observation.payload["content"] == "hello\n"
+
+
+def test_registry_rejects_bad_read_file_args(tmp_path: Path) -> None:
+    registry = default_tool_registry()
+    context = ToolExecutionContext(
+        workspace_path=tmp_path,
+        settings=settings_for(tmp_path),
+        verification_commands=[],
+    )
+
+    observation = registry.get("read_file").execute(
+        {"path": "README.md", "max_chars": -1},
+        context,
+    )
+
+    assert observation.status == "rejected"
+    assert observation.summary == "Invalid tool arguments"
