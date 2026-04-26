@@ -26,6 +26,21 @@ def test_parse_tool_call_action_accepts_known_tool():
     assert action.args == {"query": "def add", "glob": "*.py"}
 
 
+def test_parse_tool_call_action_accepts_run_shell_command():
+    action = parse_mendcode_action(
+        {
+            "type": "tool_call",
+            "action": "run_shell_command",
+            "reason": "inspect current files",
+            "args": {"command": "ls"},
+        }
+    )
+
+    assert isinstance(action, ToolCallAction)
+    assert action.action == "run_shell_command"
+    assert action.args == {"command": "ls"}
+
+
 def test_parse_tool_call_action_rejects_unknown_tool():
     with pytest.raises(ValidationError):
         parse_mendcode_action(

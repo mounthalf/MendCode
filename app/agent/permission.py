@@ -13,6 +13,7 @@ _TOOL_RISK: dict[str, RiskLevel] = {
     "read_file": "low",
     "search_code": "low",
     "show_diff": "low",
+    "run_shell_command": "low",
     "run_command": "medium",
     "apply_patch_to_worktree": "medium",
 }

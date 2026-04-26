@@ -34,7 +34,7 @@ mendcode
 
 核心原则：
 
-- [ ] 聊天优先
+- [x] 聊天优先
 - [x] 动态工具调用底座
 - [ ] 摘要优先，详情可展开
 - [x] 默认 Guided Mode
@@ -46,7 +46,7 @@ mendcode
 
 ## 3. 当前项目真实状态
 
-截至 2026-04-25，项目已经完成的是底座能力，不是最终产品形态：
+截至 2026-04-26，项目已经完成的是底座能力，不是最终产品形态：
 
 - [x] Typer CLI 基础入口
 - [x] `MendCodeAction` / `Observation` schema
@@ -55,8 +55,12 @@ mendcode
 - [x] Provider-driven next-action loop
 - [x] Git worktree 隔离
 - [x] command policy / executor
+- [x] shell policy / executor
 - [x] `repo_status` / `detect_project`
 - [x] `read_file` / `search_code`
+- [x] `run_shell_command`
+- [x] 自然语言 shell 意图识别和 TUI 执行流
+- [x] shell pending confirmation
 - [x] worktree patch proposal 执行
 - [x] verification command 执行
 - [x] diff summary
@@ -66,6 +70,7 @@ mendcode
 - [x] `ReviewSummary` 会话审查摘要模型
 - [x] `AttemptRecord` 失败尝试记录模型
 - [x] TUI review action 菜单：`view_diff` / `view_trace` / `apply` / `discard`
+- [x] `run_command` 收敛为 verification-only 工具
 
 这些能力的定位：
 
@@ -209,7 +214,9 @@ Phase A 已完成。
 
 - [x] `repo_status`
 - [x] `detect_project`
-- [x] `run_command`
+- [x] `run_command`，仅用于声明过的验证命令
+- [x] `run_shell_command`，用于普通低风险诊断命令
+- [x] shell policy / executor
 - [x] `read_file`
 - [x] fake provider 修复闭环验证
 - [x] `search_code`
@@ -220,6 +227,8 @@ Phase A 已完成。
 
 - [x] 用户描述“pytest 失败”后，过渡入口能运行测试并解析失败
 - [x] 用户描述“pytest 失败”后，Agent 能读取测试文件、搜索候选实现
+- [x] 用户输入 `ls`、`git status` 或“列一下当前目录”后，TUI 能自动运行安全 shell 并展示摘要
+- [x] 高风险 shell 命令会进入确认状态，不立即执行
 
 ### Phase E：Patch Proposal 与验证闭环
 
@@ -256,6 +265,7 @@ mendcode
 
 - [ ] 启动轻量 repo scan
 - [x] 聊天输入
+- [x] 自然语言 shell 查询输入
 - [x] Guided Mode 默认权限
 - [x] 工具调用摘要展示
 - [ ] 详情展开
@@ -273,6 +283,7 @@ mendcode
 
 - [x] `AgentSession.run_turn()` 单轮会话抽象
 - [x] `session.turns` 持续追加，为后续多轮聊天保留状态
+- [x] TUI shell confirmation 与 `/status` pending shell 状态
 
 ---
 

@@ -100,6 +100,59 @@ def test_agent_loop_executes_allowed_search_code_action(tmp_path: Path) -> None:
     assert result.trace_path is not None
 
 
+def test_agent_loop_executes_run_shell_command_action(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("demo\n", encoding="utf-8")
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="list files",
+            actions=[
+                {
+                    "type": "tool_call",
+                    "action": "run_shell_command",
+                    "reason": "inspect current directory",
+                    "args": {"command": "ls"},
+                },
+                {"type": "final_response", "status": "completed", "summary": "done"},
+            ],
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "completed"
+    assert result.steps[0].observation.status == "succeeded"
+    assert result.steps[0].observation.payload["command"] == "ls"
+    assert result.steps[0].observation.payload["status"] == "passed"
+    assert "README.md" in result.steps[0].observation.payload["stdout_excerpt"]
+
+
+def test_agent_loop_run_command_rejects_undeclared_verification_command(
+    tmp_path: Path,
+) -> None:
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="run arbitrary command",
+            actions=[
+                {
+                    "type": "tool_call",
+                    "action": "run_command",
+                    "reason": "not declared",
+                    "args": {"command": "python -c 'print(123)'"},
+                },
+                {"type": "final_response", "status": "completed", "summary": "done"},
+            ],
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "failed"
+    assert result.steps[0].observation.status == "rejected"
+    assert result.steps[0].observation.payload["status"] == "rejected"
+    assert "declared" in str(result.steps[0].observation.error_message)
+
+
 def test_agent_loop_asks_provider_for_each_next_action(tmp_path: Path) -> None:
     (tmp_path / "calculator.py").write_text(
         "def add(a, b):\n    return a + b\n",
@@ -365,6 +418,7 @@ def test_agent_loop_applies_patch_proposal_in_worktree_then_verifies(
             repo_path=repo_path,
             problem_statement="fix add",
             use_worktree=True,
+            verification_commands=[command],
             actions=[
                 {
                     "type": "tool_call",

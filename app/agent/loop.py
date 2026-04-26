@@ -7,6 +7,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.agent.permission import (
+    PermissionDecision,
     PermissionMode,
     build_confirmation_request,
     decide_permission,
@@ -30,6 +31,8 @@ from app.tracing.recorder import TraceRecorder
 from app.workspace.command_policy import CommandPolicy
 from app.workspace.executor import execute_verification_command
 from app.workspace.project_detection import detect_project
+from app.workspace.shell_executor import ShellCommandResult, execute_shell_command
+from app.workspace.shell_policy import ShellPolicy
 from app.workspace.worktree import prepare_worktree
 
 AgentLoopStatus = str
@@ -149,7 +152,12 @@ def _detect_project(repo_path: Path) -> Observation:
     )
 
 
-def _run_command(repo_path: Path, settings: Settings, args: dict[str, object]) -> Observation:
+def _run_command(
+    repo_path: Path,
+    settings: Settings,
+    args: dict[str, object],
+    verification_commands: list[str],
+) -> Observation:
     command = str(args.get("command", ""))
     if not command.strip():
         return Observation(
@@ -160,7 +168,7 @@ def _run_command(repo_path: Path, settings: Settings, args: dict[str, object]) -
         )
 
     policy = CommandPolicy(
-        allowed_commands=[command],
+        allowed_commands=verification_commands,
         allowed_root=repo_path,
         timeout_seconds=settings.verification_timeout_seconds,
     )
@@ -174,6 +182,39 @@ def _run_command(repo_path: Path, settings: Settings, args: dict[str, object]) -
         payload=result.model_dump(mode="json"),
         error_message=None if result.status == "passed" else result.stderr_excerpt,
     )
+
+
+def _shell_result_to_observation(result: ShellCommandResult) -> Observation:
+    if result.status == "passed":
+        status = "succeeded"
+    elif result.status in {"rejected", "needs_confirmation"}:
+        status = "rejected"
+    else:
+        status = "failed"
+    return Observation(
+        status=status,
+        summary=f"Ran shell command: {result.command}",
+        payload=result.model_dump(mode="json"),
+        error_message=None if status == "succeeded" else result.stderr_excerpt,
+    )
+
+
+def _run_shell_command(repo_path: Path, settings: Settings, args: dict[str, object]) -> Observation:
+    command = str(args.get("command", ""))
+    if not command.strip():
+        return Observation(
+            status="rejected",
+            summary="Unable to run shell command",
+            payload={"command": command},
+            error_message="command must not be empty",
+        )
+
+    policy = ShellPolicy(
+        allowed_root=repo_path,
+        timeout_seconds=settings.verification_timeout_seconds,
+    )
+    result = execute_shell_command(command=command, cwd=repo_path, policy=policy)
+    return _shell_result_to_observation(result)
 
 
 def _show_diff(repo_path: Path) -> Observation:
@@ -231,13 +272,16 @@ def _execute_tool_call(
     action: ToolCallAction,
     repo_path: Path,
     settings: Settings,
+    verification_commands: list[str],
 ) -> Observation:
     if action.action == "repo_status":
         return _repo_status(repo_path)
     if action.action == "detect_project":
         return _detect_project(repo_path)
     if action.action == "run_command":
-        return _run_command(repo_path, settings, action.args)
+        return _run_command(repo_path, settings, action.args, verification_commands)
+    if action.action == "run_shell_command":
+        return _run_shell_command(repo_path, settings, action.args)
     if action.action == "read_file":
         result = read_file(
             workspace_path=repo_path,
@@ -304,6 +348,7 @@ def _handle_action_payload(
     workspace_path: Path,
     settings: Settings,
     permission_mode: PermissionMode,
+    verification_commands: list[str],
 ) -> _HandledAction:
     try:
         action = parse_mendcode_action(payload)
@@ -325,6 +370,33 @@ def _handle_action_payload(
         )
 
     if isinstance(action, ToolCallAction):
+        if action.action == "run_shell_command":
+            command = str(action.args.get("command", ""))
+            shell_decision = ShellPolicy(
+                allowed_root=workspace_path,
+                timeout_seconds=settings.verification_timeout_seconds,
+            ).evaluate(command, workspace_path)
+            if shell_decision.requires_confirmation:
+                confirmation = build_confirmation_request(
+                    action=action,
+                    decision=PermissionDecision(
+                        status="confirm",
+                        reason=shell_decision.reason or "shell command requires confirmation",
+                        risk_level=shell_decision.risk_level,
+                    ),
+                )
+                observation = Observation(
+                    status="rejected",
+                    summary="User confirmation required",
+                    payload={"shell_policy_decision": shell_decision.model_dump(mode="json")},
+                    error_message=shell_decision.reason,
+                )
+                return _HandledAction(
+                    stop=True,
+                    status="needs_user_confirmation",
+                    summary=observation.summary,
+                    step=AgentStep(index=index, action=confirmation, observation=observation),
+                )
         decision = decide_permission(action, permission_mode)
         observation: Observation
         if decision.status == "confirm":
@@ -353,6 +425,7 @@ def _handle_action_payload(
                 action=action,
                 repo_path=workspace_path,
                 settings=settings,
+                verification_commands=verification_commands,
             )
         return _HandledAction(
             stop=False,
@@ -561,6 +634,7 @@ def run_agent_loop(loop_input: AgentLoopInput, settings: Settings) -> AgentLoopR
                 workspace_path=workspace_path,
                 settings=settings,
                 permission_mode=loop_input.permission_mode,
+                verification_commands=loop_input.verification_commands,
             )
             record_handled_action(handled)
             if handled.stop:
@@ -577,6 +651,7 @@ def run_agent_loop(loop_input: AgentLoopInput, settings: Settings) -> AgentLoopR
                 workspace_path=workspace_path,
                 settings=settings,
                 permission_mode=loop_input.permission_mode,
+                verification_commands=loop_input.verification_commands,
             )
             record_handled_action(handled)
             if handled.stop:

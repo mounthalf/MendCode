@@ -23,6 +23,8 @@ from app.workspace.review_actions import (
     view_trace,
     view_worktree_diff,
 )
+from app.workspace.shell_executor import ShellCommandResult, execute_shell_command
+from app.workspace.shell_policy import ShellPolicy
 
 ReviewActionExecutor = Callable[[str, AgentSessionTurn], ReviewActionResult]
 
@@ -38,6 +40,18 @@ class AgentSessionLike(Protocol):
         verification_commands: list[str],
         step_budget: int = 12,
     ) -> AgentSessionTurn:
+        ...
+
+
+class ShellExecutor(Protocol):
+    def __call__(
+        self,
+        *,
+        command: str,
+        cwd: Path,
+        policy: ShellPolicy,
+        confirmed: bool = False,
+    ) -> ShellCommandResult:
         ...
 
 
@@ -162,6 +176,7 @@ class MendCodeTextualApp(App[None]):
         chat_responder: ChatResponder | None = None,
         intent_router: IntentRouter | None = None,
         review_action_executor: ReviewActionExecutor | None = None,
+        shell_executor: ShellExecutor | None = None,
     ) -> None:
         super().__init__()
         self.repo_path = repo_path
@@ -173,6 +188,7 @@ class MendCodeTextualApp(App[None]):
         self._chat_responder = chat_responder
         self._intent_router = intent_router
         self._review_action_executor = review_action_executor
+        self._shell_executor = shell_executor
 
     def compose(self) -> ComposeResult:
         yield Static(self.header_text, id="repo-header")
@@ -182,7 +198,7 @@ class MendCodeTextualApp(App[None]):
     def on_mount(self) -> None:
         self.append_message(
             "System",
-            "Tell me what is broken. I will suggest a verification command before running tools. "
+            "Tell me what is broken, or ask for a safe shell inspection like ls or git status. "
             "Type /help for precise commands.",
         )
         self.query_one("#chat-input", Input).focus()
@@ -228,6 +244,8 @@ class MendCodeTextualApp(App[None]):
         if self.session_state.running:
             self.append_message("Error", "A request is already running.")
             return
+        if self._handle_pending_shell_reply(task):
+            return
         if self._handle_pending_fix_reply(task):
             return
 
@@ -246,6 +264,12 @@ class MendCodeTextualApp(App[None]):
 
         if decision.kind == "chat":
             self._start_chat(task)
+            return
+        if decision.kind == "shell":
+            if not decision.command:
+                self._start_chat(task)
+                return
+            self._prepare_shell_command(decision.command, source=decision.source)
             return
         self._prepare_fix(task, source=decision.source)
 
@@ -276,6 +300,7 @@ class MendCodeTextualApp(App[None]):
                 "/status - show repo and turn status",
                 "/test <command> - set or override verification command",
                 "/fix [problem] - prepare a fix with the argument or recent task",
+                "Natural shell - ls, pwd, git status, git diff, rg, cat/head/tail, find",
                 "/diff - show latest worktree diff",
                 "/trace - show latest trace excerpt",
                 "/apply - apply latest verified worktree changes",
@@ -292,6 +317,11 @@ class MendCodeTextualApp(App[None]):
             if self.session_state.last_turn is not None
             else self.session_state.last_turn_status
         )
+        pending_shell = (
+            self.session_state.pending_shell.command
+            if self.session_state.pending_shell
+            else "none"
+        )
         return "\n".join(
             [
                 f"repo: {self.repo_path}",
@@ -302,6 +332,7 @@ class MendCodeTextualApp(App[None]):
                 f"running: {self.session_state.running}",
                 f"running_kind: {self.session_state.running_kind or 'none'}",
                 f"pending_fix: {self.session_state.pending_fix is not None}",
+                f"pending_shell: {pending_shell}",
                 f"last_turn: {last_turn}",
             ]
         )
@@ -392,6 +423,59 @@ class MendCodeTextualApp(App[None]):
             return True
         return False
 
+    def _handle_pending_shell_reply(self, message: str) -> bool:
+        pending = self.session_state.pending_shell
+        if pending is None:
+            return False
+        normalized = message.strip().lower()
+        if normalized in _CANCEL_TERMS:
+            self.session_state.clear_pending_shell()
+            self.append_message("System", "已取消待确认的 shell 命令。")
+            return True
+        if normalized in _CONFIRM_TERMS:
+            command = pending.command
+            self.session_state.clear_pending_shell()
+            self._start_shell_command(command, confirmed=True)
+            return True
+        return False
+
+    def _shell_policy(self) -> ShellPolicy:
+        return ShellPolicy(
+            allowed_root=self.repo_path,
+            timeout_seconds=self.settings.verification_timeout_seconds,
+        )
+
+    def _prepare_shell_command(self, command: str, *, source: str) -> None:
+        policy = self._shell_policy()
+        decision = policy.evaluate(command, self.repo_path)
+        if decision.requires_confirmation:
+            self.session_state.set_pending_shell(
+                command=command,
+                risk_level=decision.risk_level,
+                reason=decision.reason or "command requires confirmation",
+                source=source,
+            )
+            self.append_message(
+                "System",
+                "\n".join(
+                    [
+                        "Shell 命令需要确认后执行。",
+                        f"command: {command}",
+                        f"risk_level: {decision.risk_level}",
+                        f"reason: {decision.reason or 'command requires confirmation'}",
+                        "回复“确认”或 yes 执行，回复“取消”放弃。",
+                    ]
+                ),
+            )
+            return
+        if not decision.allowed:
+            self.append_message(
+                "Error",
+                f"Shell command rejected: {decision.reason or 'command rejected by policy'}",
+            )
+            return
+        self._start_shell_command(command, confirmed=False)
+
     def _start_turn(self, task: str, verification_command: str | None = None) -> None:
         if self.session_state.running:
             self.append_message("Error", "A request is already running.")
@@ -413,6 +497,14 @@ class MendCodeTextualApp(App[None]):
         self.session_state.mark_turn_started(task)
         self.append_message("Agent", f"Running fix: {task}")
         self._run_turn_worker(task, command)
+
+    def _start_shell_command(self, command: str, *, confirmed: bool) -> None:
+        if self.session_state.running:
+            self.append_message("Error", "A request is already running.")
+            return
+        self.session_state.mark_shell_started(command)
+        self.append_message("Shell", f"Running command: {command}")
+        self._run_shell_worker(command, confirmed)
 
     def _start_chat(self, message: str) -> None:
         if self.session_state.running:
@@ -438,6 +530,32 @@ class MendCodeTextualApp(App[None]):
             self.call_from_thread(self._complete_turn_error, exc)
             return
         self.call_from_thread(self._complete_turn, turn)
+
+    @work(thread=True, exclusive=True, exit_on_error=False)
+    def _run_shell_worker(self, command: str, confirmed: bool) -> None:
+        try:
+            executor = self._shell_executor or execute_shell_command
+            result = executor(
+                command=command,
+                cwd=self.repo_path,
+                policy=self._shell_policy(),
+                confirmed=confirmed,
+            )
+        except Exception as exc:  # pragma: no cover - exercised through UI behavior
+            self.call_from_thread(self._complete_shell_error, exc)
+            return
+        self.call_from_thread(self._complete_shell, result)
+
+    def _complete_shell_error(self, exc: Exception) -> None:
+        self.session_state.mark_shell_failed()
+        self.append_message("Error", str(exc))
+
+    def _complete_shell(self, result: ShellCommandResult) -> None:
+        if result.status == "passed":
+            self.session_state.mark_shell_completed()
+        else:
+            self.session_state.mark_shell_failed()
+        self._render_shell_result(result)
 
     def _complete_turn_error(self, exc: Exception) -> None:
         self.session_state.mark_turn_failed()
@@ -475,6 +593,22 @@ class MendCodeTextualApp(App[None]):
             assistant_message=response.content,
         )
         self.append_message("MendCode", response.content)
+
+    def _render_shell_result(self, result: ShellCommandResult) -> None:
+        lines = [
+            f"command: {result.command}",
+            f"cwd: {result.cwd}",
+            f"status: {result.status}",
+            f"exit_code: {result.exit_code}",
+            f"risk_level: {result.risk_level}",
+            f"requires_confirmation: {result.requires_confirmation}",
+            f"duration_ms: {result.duration_ms}",
+        ]
+        if result.stdout_excerpt:
+            lines.extend(["stdout:", result.stdout_excerpt])
+        if result.stderr_excerpt:
+            lines.extend(["stderr:", result.stderr_excerpt])
+        self.append_message("Shell", "Shell Result\n" + "\n".join(lines))
 
     def _render_turn(self, turn: AgentSessionTurn) -> None:
         if turn.tool_summaries:

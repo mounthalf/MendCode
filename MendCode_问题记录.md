@@ -1124,3 +1124,54 @@ fake provider 修复链路中，第一次验证在 worktree 中导入 `calculato
 - OpenAI-compatible provider 不应为每个厂商写业务逻辑，优先通过 alias、prompt contract 和通用 JSON 提取增强兼容性
 - TUI 入口必须复用 session 层和已有 failure insight 能力，不应重新绕过业务层直接解释 loop steps
 - 文档中的 API 示例必须随 `AgentSession` 实际接口同步更新
+
+---
+
+## 问题 30：普通 shell 查询如果复用 verification executor，会破坏验证命令语义
+
+- 时间：2026-04-26
+- 阶段：TUI 自然语言 shell 工具调用
+- 状态：已解决
+
+### 现象
+
+TUI 需要支持用户直接输入：
+
+```text
+ls
+列一下当前目录
+git status
+```
+
+这类请求应在聊天流中展示命令结果，而不是进入修复流程。但如果直接复用现有 `run_command` / verification executor，就会产生两个问题：
+
+- 普通诊断命令和“证明修复结果”的验证命令混在一起
+- Agent loop 里模型可能绕过声明的 verification command，随意调用 `run_command`
+
+实现过程中还暴露出一个意图优先级问题：`pytest 失败了，帮我修复` 这类以命令名开头的自然语言修复请求，容易被误判成普通 shell。
+
+### 根因
+
+- verification executor 的核心语义是“只允许已声明的验证命令”，不适合承载通用 shell
+- 普通 shell 需要自己的风险分级、确认状态和输出截断规则
+- shell intent 如果优先于 fix intent，会把“命令名 + 修复描述”的中文请求误路由
+
+### 解决方案
+
+- 新增独立 `app/workspace/shell_policy.py`
+- 新增独立 `app/workspace/shell_executor.py`
+- TUI intent 从 `chat/fix` 扩展为 `chat/fix/shell`
+- 规则层先判断 fix intent，再判断 shell intent，避免 `pytest 失败了` 被误判
+- TUI 新增 `pending_shell` 状态：
+  - 低风险查询自动执行
+  - 写入、安装、联网、Git commit/push 等命令先确认
+  - 明确破坏性命令保守拒绝
+- Agent loop 新增 `run_shell_command`
+- `run_command` 收敛为只执行 `verification_commands` 中声明过的命令
+
+### 后续约束
+
+- 不要把普通 shell 能力继续塞回 verification executor
+- 新增 shell 允许项时，必须同时补 shell policy 单测和 TUI 行为测试
+- 新增 Agent 工具时，必须同步更新 action schema、permission risk、prompt contract 和 loop 测试
+- fix intent 应优先于 direct shell intent，避免“pytest 失败”“git status 报错”等修复请求被误判成 shell 查询

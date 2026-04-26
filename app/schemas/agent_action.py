@@ -13,6 +13,7 @@ ToolName = Literal[
     "repo_status",
     "detect_project",
     "run_command",
+    "run_shell_command",
     "read_file",
     "search_code",
     "apply_patch_to_worktree",

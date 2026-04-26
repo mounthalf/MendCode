@@ -18,6 +18,8 @@ def test_provider_messages_include_repair_contract_and_allowed_tools() -> None:
     assert "Return exactly one JSON object and no prose" in messages[0].content
     assert "patch_proposal" in messages[0].content
     assert "show_diff" in messages[0].content
+    assert "run_shell_command" in messages[0].content
+    assert "run_command only for declared verification commands" in messages[0].content
     assert '"type": "final_response"' in messages[0].content
     assert "Do not use action_type" in messages[0].content
     assert "Never claim completed after a failed verification" in messages[0].content

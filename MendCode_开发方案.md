@@ -34,7 +34,7 @@ mendcode
 
 ## 3. 当前已完成能力
 
-截至 2026-04-25，已完成能力主要是新 TUI Agent 路线的底座：
+截至 2026-04-26，已完成能力主要是新 TUI Agent 路线的底座：
 
 - [x] CLI 基础命令
 - [x] `MendCodeAction` / `Observation` 动作协议
@@ -51,6 +51,12 @@ mendcode
 - [x] worktree 隔离
 - [x] command policy / executor
 - [x] verification command 执行
+- [x] 普通 shell command policy / executor
+- [x] TUI 自然语言 shell 意图识别
+- [x] Guided Mode 下低风险 shell 查询自动执行
+- [x] 高风险 shell 命令进入确认状态
+- [x] Agent loop `run_shell_command` 工具
+- [x] `run_command` 保持 verification-only 语义
 - [x] JSONL trace
 - [x] `read_file`
 - [x] `search_code`
@@ -59,6 +65,8 @@ mendcode
 - [x] pytest 失败日志解析
 - [x] `ReviewSummary` 会话审查摘要模型
 - [x] `AttemptRecord` 失败尝试记录模型
+- [x] 自然语言 shell 查询：`ls` / `pwd` / `git status` / `git diff` / `rg` / `cat` / `head` / `tail` / `find`
+- [x] shell 命令结果在 TUI 聊天流中展示命令、cwd、退出码、风险等级和输出摘要
 
 已删除的旧主线：
 
@@ -89,6 +97,9 @@ mendcode
 - [x] 最小单轮 TUI-shaped 入口
 - [x] 工具调用摘要展示
 - [x] apply / discard 收尾动作
+- [x] 自然语言 shell 工具调用
+- [x] shell pending confirmation 状态
+- [x] `/status` 展示 pending shell 状态
 
 ---
 
@@ -254,9 +265,12 @@ mendcode
 
 - [x] `repo_status`
 - [x] `detect_project`
-- [x] `run_command`
+- [x] `run_command`，仅用于已声明 verification command
+- [x] `run_shell_command`，用于普通低风险诊断命令
 - [x] `read_file`
 - [x] `search_code`
+- [x] `apply_patch_to_worktree`
+- [x] `show_diff`
 
 验收：
 
@@ -265,6 +279,8 @@ mendcode
 - [x] 用户描述 pytest 失败后，过渡入口能执行基于失败测试名的 `search_code`
 - [x] 测试驱动的 Agent loop 能在 worktree 中应用 patch proposal、复跑验证、输出 diff summary
 - [x] fake provider 修复链路能完成 patch、验证、diff 和 final response
+- [x] Agent loop 中 `run_shell_command` 可执行低风险命令并形成 observation
+- [x] `run_command` 会拒绝未声明的 verification command
 
 ---
 
@@ -306,6 +322,7 @@ mendcode
 
 - [ ] 启动轻量 repo scan
 - [x] 聊天输入
+- [x] 自然语言 shell 查询输入
 - [x] Guided Mode 默认权限
 - [x] 工具调用摘要展示
 - [ ] 详情展开
@@ -322,6 +339,8 @@ mendcode
 - [x] 用户不需要提供手工文本替换补丁
 - [x] Agent 每一步工具调用都有摘要
 - [x] 修复结果必须有验证命令证明
+- [x] 用户输入 `ls`、`git status` 或“列一下当前目录”时能自动运行安全命令并展示摘要
+- [x] 用户输入危险 shell 命令时，TUI 先进入确认状态，不立即执行
 
 ---
 

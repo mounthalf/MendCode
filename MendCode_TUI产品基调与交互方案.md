@@ -146,7 +146,7 @@ MendCode 的权限基调：
 | 模式 | 只读工具 | 测试/构建 | worktree 写入 | apply 到主仓库 | 任意 shell / 网络 |
 |---|---|---|---|---|---|
 | Safe | 自动 | 每次确认 | 每次确认 | 每次确认 | 禁止 |
-| Guided | 自动 | 自动 | 自动写 worktree | 每次确认 | 每次确认或禁止 |
+| Guided | 自动 | 自动 | 自动写 worktree | 每次确认 | 低风险自动，写入/安装/网络确认或禁止 |
 | Full | 自动 | 自动 | 自动 | 可配置自动 | 可配置允许 |
 | Custom | 用户自定义 | 用户自定义 | 用户自定义 | 用户自定义 | 用户自定义 |
 
@@ -157,11 +157,12 @@ MendCode 的权限基调：
 Guided Mode 下：
 
 - [x] `repo_status` / `read_file` / `search_code` 自动执行
+- [x] `ls` / `pwd` / `git status` / `git diff` / `rg` / `cat` / `head` / `tail` / `find` 常见只读 shell 查询自动执行
 - [x] 测试、lint 可自动执行
 - [x] patch 可自动应用到隔离 worktree
 - [x] apply 到当前工作区必须确认
-- [ ] git commit / push 必须确认
-- [ ] 任意 shell、安装依赖、联网默认确认或禁止
+- [x] git commit / push 必须确认
+- [x] 任意 shell、安装依赖、联网默认确认或禁止
 
 确认不是打断，而是把风险决策交还给用户。
 
@@ -279,6 +280,7 @@ MendCode 不采用“先生成完整计划再机械执行”的模式。
 - [x] `repo_status`
 - [x] `detect_project`
 - [x] `run_command`
+- [x] `run_shell_command`
 - [x] `read_file`
 - [x] `search_code`
 - [x] `apply_patch_to_worktree`
@@ -352,6 +354,7 @@ Provider 层负责把 OpenAI tool call、Anthropic tool use、OpenAI-compatible 
 - [ ] 模型输出非法 Action：自动要求模型重试，超过阈值后停止
 - [x] 调用不存在工具：形成 rejected observation
 - [x] 未授权工具：按权限模式决定确认、拒绝或升级权限
+- [x] 普通 shell 命令先经过独立 shell policy，低风险自动执行，中高风险进入确认，明确破坏性命令拒绝
 - [x] 工具执行失败：作为 observation 记录
 - [x] 失败验证后自动读取失败测试文件并搜索候选实现
 - [ ] 连续无进展：停止自动循环，总结已尝试内容，请用户选择下一步
@@ -443,12 +446,13 @@ Custom Mode：
 - [x] `mendcode` 启动 TUI
 - [ ] 轻量 repo scan
 - [x] 聊天输入
+- [x] 自然语言 shell 查询输入
 - [x] Guided permission mode
 - [x] Provider-driven Action loop 底座
 - [x] LLM Action loop 的 JSON Action prompt/context 底座
 - [ ] 真实模型端到端修复稳定性验证
 - [x] 工具调用摘要展示
-- [x] 工具：`repo_status` / `detect_project` / `run_command` / `read_file` / `search_code`
+- [x] 工具：`repo_status` / `detect_project` / `run_command` / `run_shell_command` / `read_file` / `search_code`
 - [x] 生成 patch proposal schema
 - [x] 用户确认后 apply 到 worktree 的底层能力
 - [x] 运行验证
@@ -458,6 +462,8 @@ Custom Mode：
 - [x] `AttemptRecord` 失败尝试记录模型
 - [x] 工程审查收尾
 - [x] TUI review action 菜单：`view_diff` / `view_trace` / `apply` / `discard`
+- [x] shell 结果展示：command / cwd / exit_code / risk_level / stdout_excerpt / stderr_excerpt
+- [x] shell pending confirmation：确认后执行，取消后放弃
 
 第一版不支持：
 
@@ -505,6 +511,16 @@ Type your task:
 ```text
 pytest 失败了，帮我定位并修复
 ```
+
+用户也可以直接输入低风险 shell 查询：
+
+```text
+ls
+列一下当前目录
+git status
+```
+
+MendCode 会在当前 repo 根目录执行安全命令，并在聊天流中展示命令、cwd、退出码、风险等级和输出摘要。若用户输入写入、安装、联网或 Git 提交/推送类命令，TUI 会先进入确认状态。
 
 Agent 动态执行：
 
@@ -556,6 +572,8 @@ Actions:
 - [x] 修复结果必须有验证命令证明
 - [x] 用户可以查看 diff summary 的底层数据
 - [x] 用户可以 apply 或 discard
+- [x] 用户可以用自然语言或直接命令执行低风险 shell 查询
+- [x] 高风险 shell 命令不会绕过确认直接执行
 
 如果做不到这些，就还不是目标形态下的可演示 TUI Agent MVP。
 

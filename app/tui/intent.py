@@ -1,3 +1,4 @@
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
@@ -10,7 +11,7 @@ from app.agent.prompt_context import ChatMessage
 from app.agent.provider_factory import ProviderConfigurationError
 from app.config.settings import Settings
 
-IntentKind = Literal["chat", "fix"]
+IntentKind = Literal["chat", "fix", "shell"]
 
 FIX_INTENT_TERMS = (
     "fix",
@@ -28,6 +29,32 @@ FIX_INTENT_TERMS = (
     "失败",
     "报错",
 )
+DIRECT_SHELL_COMMANDS = {
+    "ls",
+    "pwd",
+    "git",
+    "rg",
+    "cat",
+    "head",
+    "tail",
+    "find",
+    "rm",
+    "mv",
+    "cp",
+    "pip",
+    "pip3",
+    "uv",
+    "npm",
+    "pnpm",
+    "yarn",
+    "curl",
+    "wget",
+    "python",
+    "python3",
+    "pytest",
+    "make",
+    "echo",
+}
 
 
 @dataclass(frozen=True)
@@ -40,6 +67,7 @@ class IntentContext:
 class IntentDecision:
     kind: IntentKind
     source: str = "rule"
+    command: str | None = None
 
 
 class IntentRouter(Protocol):
@@ -51,6 +79,9 @@ class RuleBasedIntentRouter:
     def route(self, message: str, context: IntentContext) -> IntentDecision:
         if looks_like_fix_request(message):
             return IntentDecision(kind="fix", source="rule")
+        shell_command = plan_rule_based_shell_command(message)
+        if shell_command is not None:
+            return IntentDecision(kind="shell", source="rule", command=shell_command)
         return IntentDecision(kind="chat", source="rule")
 
 
@@ -70,7 +101,7 @@ class OpenAICompatibleIntentRouter:
 
     def route(self, message: str, context: IntentContext) -> IntentDecision:
         rule_decision = self._rule_router.route(message, context)
-        if rule_decision.kind == "fix":
+        if rule_decision.kind in {"fix", "shell"}:
             return rule_decision
 
         try:
@@ -85,12 +116,51 @@ class OpenAICompatibleIntentRouter:
         normalized = content.strip().lower()
         if normalized.startswith("fix"):
             return IntentDecision(kind="fix", source="model")
+        shell_command = _parse_model_shell_command(content)
+        if shell_command is not None:
+            return IntentDecision(kind="shell", source="model", command=shell_command)
         return IntentDecision(kind="chat", source="model")
 
 
 def looks_like_fix_request(message: str) -> bool:
     normalized = message.strip().lower()
     return any(term in normalized for term in FIX_INTENT_TERMS)
+
+
+def plan_rule_based_shell_command(message: str) -> str | None:
+    stripped = message.strip()
+    normalized = stripped.lower()
+    if not stripped:
+        return None
+
+    if any(term in normalized for term in ["列一下当前目录", "列出当前目录", "当前目录有哪些"]):
+        return "ls"
+    if any(term in normalized for term in ["看下当前路径", "当前路径", "当前目录是哪里"]):
+        return "pwd"
+    if "git status" in normalized or "仓库状态" in normalized:
+        return "git status"
+    if "git diff" in normalized or "看下 diff" in normalized or "查看 diff" in normalized:
+        return "git diff"
+
+    try:
+        tokens = shlex.split(stripped, posix=True)
+    except ValueError:
+        return None
+    if not tokens:
+        return None
+    executable = tokens[1] if tokens[0] == "sudo" and len(tokens) > 1 else tokens[0]
+    if executable in DIRECT_SHELL_COMMANDS:
+        return stripped
+    return None
+
+
+def _parse_model_shell_command(content: str) -> str | None:
+    stripped = content.strip()
+    lower = stripped.lower()
+    if not lower.startswith("shell:"):
+        return None
+    command = stripped.split(":", 1)[1].strip()
+    return command or None
 
 
 def _build_intent_messages(*, message: str, context: IntentContext) -> list[ChatMessage]:
@@ -100,9 +170,13 @@ def _build_intent_messages(*, message: str, context: IntentContext) -> list[Chat
             role="system",
             content=(
                 "Classify the user's message for MendCode. Return exactly one word: "
-                "fix or chat. Return fix only when the user wants code changes, "
-                "debugging, tests fixed, or command-driven repair. Return chat for "
-                "questions, explanations, thanks, or general discussion.\n"
+                "fix or chat, or return shell: <command>. Return fix only when the "
+                "user wants code changes, debugging, tests fixed, or command-driven "
+                "repair. Return shell: <command> when the user wants to inspect the "
+                "local repository or run a normal terminal command without asking for "
+                "a repair. Prefer simple commands such as ls, pwd, git status, git diff, "
+                "rg, cat, head, tail, and find. Return chat for questions, explanations, "
+                "thanks, or general discussion.\n"
                 f"repo_path: {context.repo_path}\n"
                 f"verification_command: {verification}"
             ),

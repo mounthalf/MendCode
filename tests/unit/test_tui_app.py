@@ -11,6 +11,7 @@ from app.config.settings import Settings
 from app.tui.app import MendCodeTextualApp
 from app.tui.chat import ChatResponse
 from app.workspace.review_actions import ReviewActionResult
+from app.workspace.shell_executor import ShellCommandResult
 
 pytestmark = pytest.mark.asyncio
 
@@ -138,6 +139,38 @@ class FakeChatResponder:
         return ChatResponse(content=self.response)
 
 
+class FakeShellExecutor:
+    def __init__(
+        self,
+        result: ShellCommandResult | None = None,
+        *,
+        started: threading.Event | None = None,
+        release: threading.Event | None = None,
+    ) -> None:
+        self.result = result
+        self.started = started
+        self.release = release
+        self.calls: list[tuple[str, Path, bool]] = []
+
+    def __call__(self, *, command, cwd, policy, confirmed=False) -> ShellCommandResult:
+        self.calls.append((command, cwd, confirmed))
+        if self.started is not None:
+            self.started.set()
+        if self.release is not None:
+            self.release.wait(timeout=5)
+        return self.result or ShellCommandResult(
+            command=command,
+            cwd=str(cwd),
+            exit_code=0,
+            status="passed",
+            stdout_excerpt="README.md\n",
+            stderr_excerpt="",
+            duration_ms=1,
+            risk_level="low",
+            requires_confirmation=False,
+        )
+
+
 async def wait_until(predicate, timeout: float = 2.0) -> None:
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
@@ -189,6 +222,100 @@ async def test_plain_message_without_test_command_runs_general_chat(
             "I can discuss the repo before tools run." in message
             for message in app.message_texts
         )
+
+
+async def test_shell_command_runs_automatically_and_renders_output(tmp_path: Path) -> None:
+    repo_path = init_git_repo(tmp_path)
+    shell_executor = FakeShellExecutor()
+    app = MendCodeTextualApp(
+        repo_path=repo_path,
+        settings=make_settings(tmp_path),
+        shell_executor=shell_executor,
+    )
+
+    async with app.run_test():
+        app.handle_user_input("ls")
+        await wait_until(lambda: not app.session_state.running)
+
+        assert shell_executor.calls == [("ls", repo_path, False)]
+        assert app.session_state.pending_shell is None
+        assert any("Shell Result" in message for message in app.message_texts)
+        assert any("command: ls" in message for message in app.message_texts)
+        assert any("README.md" in message for message in app.message_texts)
+
+
+async def test_natural_language_shell_request_runs_planned_command(
+    tmp_path: Path,
+) -> None:
+    repo_path = init_git_repo(tmp_path)
+    shell_executor = FakeShellExecutor()
+    app = MendCodeTextualApp(
+        repo_path=repo_path,
+        settings=make_settings(tmp_path),
+        shell_executor=shell_executor,
+    )
+
+    async with app.run_test():
+        app.handle_user_input("列一下当前目录")
+        await wait_until(lambda: not app.session_state.running)
+
+        assert shell_executor.calls == [("ls", repo_path, False)]
+
+
+async def test_dangerous_shell_command_waits_for_confirmation(tmp_path: Path) -> None:
+    repo_path = init_git_repo(tmp_path)
+    shell_executor = FakeShellExecutor()
+    app = MendCodeTextualApp(
+        repo_path=repo_path,
+        settings=make_settings(tmp_path),
+        shell_executor=shell_executor,
+    )
+
+    async with app.run_test() as pilot:
+        app.handle_user_input("rm README.md")
+        await pilot.pause()
+
+        assert shell_executor.calls == []
+        assert app.session_state.pending_shell is not None
+        assert app.session_state.pending_shell.command == "rm README.md"
+        assert any("需要确认" in message for message in app.message_texts)
+
+        app.handle_user_input("取消")
+        await pilot.pause()
+
+        assert shell_executor.calls == []
+        assert app.session_state.pending_shell is None
+
+
+async def test_pending_shell_confirmation_runs_command(tmp_path: Path) -> None:
+    repo_path = init_git_repo(tmp_path)
+    shell_executor = FakeShellExecutor(
+        ShellCommandResult(
+            command="rm README.md",
+            cwd=str(repo_path),
+            exit_code=0,
+            status="passed",
+            stdout_excerpt="",
+            stderr_excerpt="",
+            duration_ms=1,
+            risk_level="high",
+            requires_confirmation=True,
+        )
+    )
+    app = MendCodeTextualApp(
+        repo_path=repo_path,
+        settings=make_settings(tmp_path),
+        shell_executor=shell_executor,
+    )
+
+    async with app.run_test():
+        app.handle_user_input("rm README.md")
+        app.handle_user_input("确认")
+        await wait_until(lambda: not app.session_state.running)
+
+        assert shell_executor.calls == [("rm README.md", repo_path, True)]
+        assert app.session_state.pending_shell is None
+        assert any("risk_level: high" in message for message in app.message_texts)
 
 
 async def test_natural_fix_request_waits_for_confirmation_then_runs_with_set_test(
@@ -355,6 +482,29 @@ async def test_running_worker_rejects_second_fix_request(tmp_path: Path) -> None
         await wait_until(started.is_set)
 
         app.handle_user_input("/fix another task")
+
+        assert any("already running" in message for message in app.message_texts)
+        release.set()
+        await wait_until(lambda: not app.session_state.running)
+        await pilot.pause()
+
+
+async def test_shell_running_rejects_second_shell_request(tmp_path: Path) -> None:
+    repo_path = init_git_repo(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+    shell_executor = FakeShellExecutor(started=started, release=release)
+    app = MendCodeTextualApp(
+        repo_path=repo_path,
+        settings=make_settings(tmp_path),
+        shell_executor=shell_executor,
+    )
+
+    async with app.run_test() as pilot:
+        app.handle_user_input("ls")
+        await wait_until(started.is_set)
+
+        app.handle_user_input("pwd")
 
         assert any("already running" in message for message in app.message_texts)
         release.set()

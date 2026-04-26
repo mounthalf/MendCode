@@ -42,6 +42,25 @@ def test_rule_based_intent_router_detects_fix_requests(tmp_path: Path) -> None:
     assert decision.kind == "fix"
 
 
+def test_rule_based_intent_router_detects_direct_shell_commands(tmp_path: Path) -> None:
+    decision = RuleBasedIntentRouter().route("git status", IntentContext(repo_path=tmp_path))
+
+    assert decision.kind == "shell"
+    assert decision.command == "git status"
+
+
+def test_rule_based_intent_router_maps_natural_language_shell_requests(
+    tmp_path: Path,
+) -> None:
+    decision = RuleBasedIntentRouter().route(
+        "列一下当前目录",
+        IntentContext(repo_path=tmp_path),
+    )
+
+    assert decision.kind == "shell"
+    assert decision.command == "ls"
+
+
 def test_rule_based_intent_router_keeps_general_questions_as_chat(tmp_path: Path) -> None:
     decision = RuleBasedIntentRouter().route(
         "what can you do?",
@@ -65,6 +84,41 @@ def test_openai_intent_router_uses_model_for_ambiguous_messages(tmp_path: Path) 
     assert decision.kind == "fix"
     assert client.calls[0]["model"] == "test-model"
     assert client.calls[0]["timeout_seconds"] == 12
+
+
+def test_openai_intent_router_keeps_rule_based_shell_commands_local(
+    tmp_path: Path,
+) -> None:
+    client = FakeClient("chat")
+    router = OpenAICompatibleIntentRouter(
+        model="test-model",
+        api_key="secret-key",
+        timeout_seconds=12,
+        client=client,
+    )
+
+    decision = router.route("ls", IntentContext(repo_path=tmp_path))
+
+    assert decision.kind == "shell"
+    assert decision.command == "ls"
+    assert client.calls == []
+
+
+def test_openai_intent_router_can_plan_shell_command_for_ambiguous_message(
+    tmp_path: Path,
+) -> None:
+    client = FakeClient("shell: git status")
+    router = OpenAICompatibleIntentRouter(
+        model="test-model",
+        api_key="secret-key",
+        timeout_seconds=12,
+        client=client,
+    )
+
+    decision = router.route("what is my repo state?", IntentContext(repo_path=tmp_path))
+
+    assert decision.kind == "shell"
+    assert decision.command == "git status"
 
 
 def test_openai_intent_router_falls_back_to_chat_when_classification_fails(

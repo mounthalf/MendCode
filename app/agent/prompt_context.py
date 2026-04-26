@@ -126,12 +126,15 @@ def _system_prompt() -> str:
         "The object must be a valid MendCodeAction.\n"
         "Allowed action types: assistant_message, tool_call, patch_proposal, "
         "user_confirmation_request, final_response.\n"
-        "Allowed tool actions: repo_status, detect_project, run_command, read_file, "
-        "search_code, apply_patch_to_worktree, show_diff.\n"
+        "Allowed tool actions: repo_status, detect_project, run_shell_command, "
+        "run_command, read_file, search_code, apply_patch_to_worktree, show_diff.\n"
         "Use the discriminator field named type. Do not use action_type. Examples: "
         '{"type": "tool_call", "action": "repo_status", "reason": "inspect", "args": {}}; '
         '{"type": "final_response", "status": "completed", "summary": "verified", '
         '"recommended_actions": []}.\n'
+        "Use run_shell_command for ordinary low-risk diagnosis such as ls, pwd, "
+        "git status, git diff, rg, cat, head, tail, and find. Use run_command only "
+        "for declared verification commands from verification_commands.\n"
         "Repair workflow: inspect repo status and project type if unknown; run or inspect "
         "verification failure; read failing test files; search candidate implementation; "
         "propose a unified diff patch with patch_proposal; rerun verification; show_diff; "
