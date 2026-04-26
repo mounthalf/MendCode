@@ -41,6 +41,28 @@ def test_parse_tool_call_action_accepts_run_shell_command():
     assert action.args == {"command": "ls"}
 
 
+def test_parse_tool_call_action_accepts_structured_terminal_tools():
+    for tool_name, args in [
+        ("list_dir", {"path": "app"}),
+        ("glob_file_search", {"pattern": "**/*.py"}),
+        ("rg", {"query": "ToolCallAction", "glob": "*.py"}),
+        ("git", {"args": ["status", "--short"]}),
+        ("apply_patch", {"patch": "diff --git a/a.txt b/a.txt\n"}),
+    ]:
+        action = parse_mendcode_action(
+            {
+                "type": "tool_call",
+                "action": tool_name,
+                "reason": "structured terminal access",
+                "args": args,
+            }
+        )
+
+        assert isinstance(action, ToolCallAction)
+        assert action.action == tool_name
+        assert action.args == args
+
+
 def test_parse_tool_call_action_rejects_unknown_tool():
     with pytest.raises(ValidationError):
         parse_mendcode_action(

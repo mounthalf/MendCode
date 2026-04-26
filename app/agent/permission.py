@@ -11,10 +11,15 @@ _TOOL_RISK: dict[str, RiskLevel] = {
     "repo_status": "low",
     "detect_project": "low",
     "read_file": "low",
+    "list_dir": "low",
+    "glob_file_search": "low",
     "search_code": "low",
+    "rg": "low",
+    "git": "low",
     "show_diff": "low",
     "run_shell_command": "low",
     "run_command": "medium",
+    "apply_patch": "medium",
     "apply_patch_to_worktree": "medium",
 }
 
@@ -43,7 +48,7 @@ def decide_permission(action: ToolCallAction, mode: PermissionMode) -> Permissio
         )
 
     if mode == "guided":
-        if tool_name == "apply_patch_to_worktree":
+        if tool_name in {"apply_patch", "apply_patch_to_worktree"}:
             return PermissionDecision(
                 status="allow",
                 reason="guided mode allows worktree patching before user apply",

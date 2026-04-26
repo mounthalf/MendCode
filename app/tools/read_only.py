@@ -1,8 +1,13 @@
 import subprocess
 from pathlib import Path
 
-from app.tools.guard import resolve_workspace_file
+from app.tools.guard import resolve_workspace_file, resolve_workspace_path
 from app.tools.schemas import ToolResult
+
+
+def _relative_posix(workspace_path: Path, path: Path) -> str:
+    relative = path.resolve().relative_to(workspace_path.resolve())
+    return relative.as_posix() or "."
 
 
 def _reject_read_file(relative_path: str, workspace_path: Path, message: str) -> ToolResult:
@@ -128,6 +133,145 @@ def read_file(
             "total_lines": total_lines,
             "content": content,
             "truncated": truncated,
+        },
+        error_message=None,
+        workspace_path=str(workspace_path),
+    )
+
+
+def _reject_list_dir(relative_path: str, workspace_path: Path, message: str) -> ToolResult:
+    return ToolResult(
+        tool_name="list_dir",
+        status="rejected",
+        summary=f"Unable to list {relative_path}",
+        payload={"relative_path": relative_path, "total_entries": 0, "entries": []},
+        error_message=message,
+        workspace_path=str(workspace_path),
+    )
+
+
+def list_dir(
+    workspace_path: Path,
+    relative_path: str = ".",
+    max_entries: int | None = None,
+) -> ToolResult:
+    if max_entries is not None and max_entries < 0:
+        return _reject_list_dir(
+            relative_path,
+            workspace_path,
+            "max_entries must be greater than or equal to 0",
+        )
+
+    try:
+        target = resolve_workspace_path(workspace_path, relative_path)
+    except ValueError as exc:
+        return _reject_list_dir(relative_path, workspace_path, str(exc))
+
+    if not target.exists():
+        return _reject_list_dir(relative_path, workspace_path, "path does not exist")
+    if not target.is_dir():
+        return _reject_list_dir(relative_path, workspace_path, "path is not a directory")
+
+    entries = []
+    for child in sorted(target.iterdir(), key=lambda item: item.name):
+        entry_type = "directory" if child.is_dir() else "file"
+        if child.is_symlink():
+            entry_type = "symlink"
+        entries.append(
+            {
+                "relative_path": _relative_posix(workspace_path, child),
+                "name": child.name,
+                "type": entry_type,
+                "size_bytes": child.stat().st_size if child.is_file() else None,
+            }
+        )
+
+    total_entries = len(entries)
+    truncated = False
+    if max_entries is not None and len(entries) > max_entries:
+        entries = entries[:max_entries]
+        truncated = True
+
+    return ToolResult(
+        tool_name="list_dir",
+        status="passed",
+        summary=f"Listed {relative_path}",
+        payload={
+            "relative_path": relative_path,
+            "total_entries": total_entries,
+            "truncated": truncated,
+            "entries": entries,
+        },
+        error_message=None,
+        workspace_path=str(workspace_path),
+    )
+
+
+def _reject_glob_file_search(workspace_path: Path, pattern: str, message: str) -> ToolResult:
+    return ToolResult(
+        tool_name="glob_file_search",
+        status="rejected",
+        summary="Unable to search files",
+        payload={"pattern": pattern, "total_matches": 0, "matches": []},
+        error_message=message,
+        workspace_path=str(workspace_path),
+    )
+
+
+def glob_file_search(
+    workspace_path: Path,
+    pattern: str,
+    max_results: int | None = None,
+) -> ToolResult:
+    stripped = pattern.strip()
+    if not stripped:
+        return _reject_glob_file_search(workspace_path, pattern, "pattern must not be empty")
+    if Path(stripped).is_absolute():
+        return _reject_glob_file_search(workspace_path, pattern, "pattern must be relative")
+    if ".." in Path(stripped).parts:
+        return _reject_glob_file_search(workspace_path, pattern, "pattern escapes workspace root")
+    if max_results is not None and max_results < 0:
+        return _reject_glob_file_search(
+            workspace_path,
+            pattern,
+            "max_results must be greater than or equal to 0",
+        )
+
+    matches = []
+    try:
+        candidates = sorted(workspace_path.glob(stripped), key=lambda item: item.as_posix())
+    except ValueError as exc:
+        return _reject_glob_file_search(workspace_path, pattern, str(exc))
+
+    for candidate in candidates:
+        if not candidate.exists():
+            continue
+        entry_type = "directory" if candidate.is_dir() else "file"
+        if candidate.is_symlink():
+            entry_type = "symlink"
+        matches.append(
+            {
+                "relative_path": _relative_posix(workspace_path, candidate),
+                "type": entry_type,
+                "size_bytes": candidate.stat().st_size if candidate.is_file() else None,
+            }
+        )
+
+    total_matches = len(matches)
+    truncated = False
+    if max_results is not None and len(matches) > max_results:
+        matches = matches[:max_results]
+        truncated = True
+
+    return ToolResult(
+        tool_name="glob_file_search",
+        status="passed",
+        summary=f"Searched files with {pattern}",
+        payload={
+            "pattern": pattern,
+            "total_matches": total_matches,
+            "truncated": truncated,
+            "matches": matches,
         },
         error_message=None,
         workspace_path=str(workspace_path),

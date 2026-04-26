@@ -1,3 +1,4 @@
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -25,7 +26,7 @@ from app.schemas.agent_action import (
 )
 from app.schemas.trace import TraceEvent
 from app.tools.patch import apply_patch
-from app.tools.read_only import read_file, search_code
+from app.tools.read_only import glob_file_search, list_dir, read_file, search_code
 from app.tools.schemas import ToolResult
 from app.tracing.recorder import TraceRecorder
 from app.workspace.command_policy import CommandPolicy
@@ -96,6 +97,19 @@ def _failed_observation(summary: str, error_message: str) -> Observation:
         status="failed",
         summary=summary,
         payload={},
+        error_message=error_message,
+    )
+
+
+def _rejected_observation(
+    summary: str,
+    error_message: str,
+    payload: dict[str, Any] | None = None,
+) -> Observation:
+    return Observation(
+        status="rejected",
+        summary=summary,
+        payload=payload or {},
         error_message=error_message,
     )
 
@@ -217,6 +231,60 @@ def _run_shell_command(repo_path: Path, settings: Settings, args: dict[str, obje
     return _shell_result_to_observation(result)
 
 
+def _coerce_command_args(value: object) -> tuple[list[str] | None, str | None]:
+    if isinstance(value, list):
+        if not all(isinstance(item, str) and item.strip() for item in value):
+            return None, "args must be a list of non-empty strings"
+        return value, None
+    if isinstance(value, str):
+        try:
+            return shlex.split(value), None
+        except ValueError as exc:
+            return None, f"unable to parse args: {exc}"
+    return None, "args must be a list of strings or a shell-style string"
+
+
+def _build_git_command(args: dict[str, object]) -> tuple[str | None, str | None]:
+    raw_args = args.get("args", args.get("command", ""))
+    git_args, error_message = _coerce_command_args(raw_args)
+    if error_message is not None:
+        return None, error_message
+    assert git_args is not None
+    if git_args and git_args[0] == "git":
+        git_args = git_args[1:]
+    if not git_args:
+        return None, "git args must include a subcommand"
+    return "git " + shlex.join(git_args), None
+
+
+def _run_git(repo_path: Path, settings: Settings, args: dict[str, object]) -> Observation:
+    command, error_message = _build_git_command(args)
+    if error_message is not None:
+        return _rejected_observation(
+            "Unable to run git",
+            error_message,
+            payload={"args": args},
+        )
+    assert command is not None
+    policy = ShellPolicy(
+        allowed_root=repo_path,
+        timeout_seconds=settings.verification_timeout_seconds,
+    )
+    result = execute_shell_command(command=command, cwd=repo_path, policy=policy)
+    return _shell_result_to_observation(result)
+
+
+def _run_rg(repo_path: Path, args: dict[str, object]) -> Observation:
+    query = str(args.get("query") or args.get("pattern") or "")
+    result = search_code(
+        workspace_path=repo_path,
+        query=query,
+        glob=args.get("glob"),  # type: ignore[arg-type]
+        max_results=args.get("max_results"),  # type: ignore[arg-type]
+    )
+    return _tool_result_to_observation(result)
+
+
 def _show_diff(repo_path: Path) -> Observation:
     try:
         code, stdout, stderr = _run_subprocess(["git", "diff", "--stat"], repo_path)
@@ -232,24 +300,45 @@ def _show_diff(repo_path: Path) -> Observation:
 
 
 def _apply_patch_proposal(action: PatchProposalAction, workspace_path: Path) -> Observation:
+    return _apply_unified_patch(
+        workspace_path=workspace_path,
+        patch=action.patch,
+        files_to_modify=action.files_to_modify,
+        summary="patch proposal",
+    )
+
+
+def _apply_unified_patch(
+    *,
+    workspace_path: Path,
+    patch: str,
+    files_to_modify: list[str],
+    summary: str,
+) -> Observation:
+    if not patch.strip():
+        return _rejected_observation(
+            f"Unable to apply {summary}",
+            "patch must not be empty",
+            payload={"files_to_modify": files_to_modify},
+        )
     try:
         completed = subprocess.run(
             ["git", "apply", "--whitespace=nowarn"],
             cwd=workspace_path,
-            input=action.patch,
+            input=patch,
             capture_output=True,
             text=True,
             check=False,
         )
     except OSError as exc:
-        return _failed_observation("Unable to apply patch proposal", str(exc))
+        return _failed_observation(f"Unable to apply {summary}", str(exc))
 
     if completed.returncode != 0:
         return Observation(
             status="failed",
-            summary="Unable to apply patch proposal",
+            summary=f"Unable to apply {summary}",
             payload={
-                "files_to_modify": action.files_to_modify,
+                "files_to_modify": files_to_modify,
                 "stderr": completed.stderr,
                 "stdout": completed.stdout,
             },
@@ -262,8 +351,26 @@ def _apply_patch_proposal(action: PatchProposalAction, workspace_path: Path) -> 
 
     return Observation(
         status="succeeded",
-        summary="Applied patch proposal",
-        payload={"files_to_modify": action.files_to_modify},
+        summary=f"Applied {summary}",
+        payload={"files_to_modify": files_to_modify},
+    )
+
+
+def _apply_patch_tool(args: dict[str, object], workspace_path: Path) -> Observation:
+    files_to_modify = args.get("files_to_modify", [])
+    if not isinstance(files_to_modify, list) or not all(
+        isinstance(item, str) for item in files_to_modify
+    ):
+        return _rejected_observation(
+            "Unable to apply patch",
+            "files_to_modify must be a list of strings",
+            payload={"files_to_modify": files_to_modify},
+        )
+    return _apply_unified_patch(
+        workspace_path=workspace_path,
+        patch=str(args.get("patch", "")),
+        files_to_modify=files_to_modify,
+        summary="patch",
     )
 
 
@@ -291,6 +398,20 @@ def _execute_tool_call(
             max_chars=action.args.get("max_chars"),  # type: ignore[arg-type]
         )
         return _tool_result_to_observation(result)
+    if action.action == "list_dir":
+        result = list_dir(
+            workspace_path=repo_path,
+            relative_path=str(action.args.get("relative_path") or action.args.get("path") or "."),
+            max_entries=action.args.get("max_entries"),  # type: ignore[arg-type]
+        )
+        return _tool_result_to_observation(result)
+    if action.action == "glob_file_search":
+        result = glob_file_search(
+            workspace_path=repo_path,
+            pattern=str(action.args.get("pattern", "")),
+            max_results=action.args.get("max_results"),  # type: ignore[arg-type]
+        )
+        return _tool_result_to_observation(result)
     if action.action == "search_code":
         result = search_code(
             workspace_path=repo_path,
@@ -299,6 +420,12 @@ def _execute_tool_call(
             max_results=action.args.get("max_results"),  # type: ignore[arg-type]
         )
         return _tool_result_to_observation(result)
+    if action.action == "rg":
+        return _run_rg(repo_path, action.args)
+    if action.action == "git":
+        return _run_git(repo_path, settings, action.args)
+    if action.action == "apply_patch":
+        return _apply_patch_tool(action.args, repo_path)
     if action.action == "apply_patch_to_worktree":
         result = apply_patch(
             workspace_path=repo_path,
@@ -341,6 +468,17 @@ def _record_step(
     )
 
 
+def _shell_policy_command_for_action(action: ToolCallAction) -> str | None:
+    if action.action == "run_shell_command":
+        return str(action.args.get("command", ""))
+    if action.action == "git":
+        command, error_message = _build_git_command(action.args)
+        if error_message is not None:
+            return None
+        return command
+    return None
+
+
 def _handle_action_payload(
     *,
     payload: dict[str, object],
@@ -370,12 +508,12 @@ def _handle_action_payload(
         )
 
     if isinstance(action, ToolCallAction):
-        if action.action == "run_shell_command":
-            command = str(action.args.get("command", ""))
+        shell_policy_command = _shell_policy_command_for_action(action)
+        if shell_policy_command is not None:
             shell_decision = ShellPolicy(
                 allowed_root=workspace_path,
                 timeout_seconds=settings.verification_timeout_seconds,
-            ).evaluate(command, workspace_path)
+            ).evaluate(shell_policy_command, workspace_path)
             if shell_decision.requires_confirmation:
                 confirmation = build_confirmation_request(
                     action=action,

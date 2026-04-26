@@ -15,7 +15,12 @@ ToolName = Literal[
     "run_command",
     "run_shell_command",
     "read_file",
+    "list_dir",
+    "glob_file_search",
     "search_code",
+    "rg",
+    "git",
+    "apply_patch",
     "apply_patch_to_worktree",
     "show_diff",
 ]

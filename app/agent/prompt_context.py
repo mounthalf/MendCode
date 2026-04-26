@@ -57,6 +57,9 @@ def _selected_payload(
         "diff_stat",
         "content",
         "truncated",
+        "pattern",
+        "total_entries",
+        "total_matches",
     ]:
         if key in payload:
             selected[key] = _trim_text(
@@ -64,6 +67,21 @@ def _selected_payload(
                 limits=limits,
                 secret_values=secret_values,
             )
+    entries = payload.get("entries")
+    if isinstance(entries, list):
+        selected["entries"] = [
+            {
+                str(entry_key): _trim_text(
+                    entry_value,
+                    limits=limits,
+                    secret_values=secret_values,
+                )
+                for entry_key, entry_value in entry.items()
+            }
+            for entry in entries[: limits.max_search_matches]
+            if isinstance(entry, dict)
+        ]
+        selected["entries_truncated"] = len(entries) > limits.max_search_matches
     matches = payload.get("matches")
     if isinstance(matches, list):
         selected["matches"] = [
@@ -126,15 +144,18 @@ def _system_prompt() -> str:
         "The object must be a valid MendCodeAction.\n"
         "Allowed action types: assistant_message, tool_call, patch_proposal, "
         "user_confirmation_request, final_response.\n"
-        "Allowed tool actions: repo_status, detect_project, run_shell_command, "
-        "run_command, read_file, search_code, apply_patch_to_worktree, show_diff.\n"
+        "Allowed tool actions: repo_status, detect_project, read_file, list_dir, "
+        "glob_file_search, search_code, rg, git, apply_patch, apply_patch_to_worktree, "
+        "show_diff, run_shell_command, run_command.\n"
         "Use the discriminator field named type. Do not use action_type. Examples: "
         '{"type": "tool_call", "action": "repo_status", "reason": "inspect", "args": {}}; '
         '{"type": "final_response", "status": "completed", "summary": "verified", '
         '"recommended_actions": []}.\n'
-        "Use run_shell_command for ordinary low-risk diagnosis such as ls, pwd, "
-        "git status, git diff, rg, cat, head, tail, and find. Use run_command only "
-        "for declared verification commands from verification_commands.\n"
+        "Prefer structured tools over raw shell: use read_file for file content, "
+        "list_dir for directory inspection, glob_file_search for path discovery, rg or "
+        "search_code for text search, git for repository inspection, and apply_patch for "
+        "unified diffs. Use run_shell_command only when no structured tool fits. Use "
+        "run_command only for declared verification commands from verification_commands.\n"
         "Repair workflow: inspect repo status and project type if unknown; run or inspect "
         "verification failure; read failing test files; search candidate implementation; "
         "propose a unified diff patch with patch_proposal; rerun verification; show_diff; "

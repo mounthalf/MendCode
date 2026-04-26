@@ -127,6 +127,155 @@ def test_agent_loop_executes_run_shell_command_action(tmp_path: Path) -> None:
     assert "README.md" in result.steps[0].observation.payload["stdout_excerpt"]
 
 
+def test_agent_loop_executes_list_dir_action(tmp_path: Path) -> None:
+    repo_path = tmp_path / "repo"
+    repo_path.mkdir()
+    (repo_path / "README.md").write_text("demo\n", encoding="utf-8")
+    (repo_path / "app").mkdir()
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=repo_path,
+            problem_statement="list files",
+            actions=[
+                {
+                    "type": "tool_call",
+                    "action": "list_dir",
+                    "reason": "inspect current directory",
+                    "args": {"path": "."},
+                },
+                {"type": "final_response", "status": "completed", "summary": "done"},
+            ],
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "completed"
+    assert result.steps[0].observation.status == "succeeded"
+    assert result.steps[0].observation.payload["entries"] == [
+        {"relative_path": "README.md", "name": "README.md", "type": "file", "size_bytes": 5},
+        {"relative_path": "app", "name": "app", "type": "directory", "size_bytes": None},
+    ]
+
+
+def test_agent_loop_executes_structured_git_status_action(tmp_path: Path) -> None:
+    repo_path = init_git_repo(tmp_path)
+    (repo_path / "README.md").write_text("demo\n", encoding="utf-8")
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=repo_path,
+            problem_statement="check status",
+            actions=[
+                {
+                    "type": "tool_call",
+                    "action": "git",
+                    "reason": "inspect repository state",
+                    "args": {"args": ["status", "--short"]},
+                },
+                {"type": "final_response", "status": "completed", "summary": "done"},
+            ],
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "completed"
+    assert result.steps[0].observation.status == "succeeded"
+    assert result.steps[0].observation.payload["command"] == "git status --short"
+    assert "README.md" in result.steps[0].observation.payload["stdout_excerpt"]
+
+
+def test_agent_loop_executes_structured_rg_action(tmp_path: Path) -> None:
+    (tmp_path / "src.py").write_text("alpha\nbeta alpha\n", encoding="utf-8")
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="search",
+            actions=[
+                {
+                    "type": "tool_call",
+                    "action": "rg",
+                    "reason": "find references",
+                    "args": {"query": "alpha", "glob": "*.py", "max_results": 1},
+                },
+                {"type": "final_response", "status": "completed", "summary": "done"},
+            ],
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "completed"
+    assert result.steps[0].observation.status == "succeeded"
+    assert result.steps[0].observation.payload["total_matches"] == 2
+    assert result.steps[0].observation.payload["matches"] == [
+        {"relative_path": "src.py", "line_number": 1, "line_text": "alpha"}
+    ]
+
+
+def test_agent_loop_executes_structured_apply_patch_action(tmp_path: Path) -> None:
+    target = tmp_path / "notes.txt"
+    target.write_text("alpha\n", encoding="utf-8")
+    patch = "\n".join(
+        [
+            "diff --git a/notes.txt b/notes.txt",
+            "index 4a58007..8ab3c1e 100644",
+            "--- a/notes.txt",
+            "+++ b/notes.txt",
+            "@@ -1 +1 @@",
+            "-alpha",
+            "+beta",
+            "",
+        ]
+    )
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="patch file",
+            actions=[
+                {
+                    "type": "tool_call",
+                    "action": "apply_patch",
+                    "reason": "edit notes",
+                    "args": {"patch": patch},
+                },
+                {"type": "final_response", "status": "completed", "summary": "done"},
+            ],
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "completed"
+    assert result.steps[0].observation.status == "succeeded"
+    assert target.read_text(encoding="utf-8") == "beta\n"
+
+
+def test_agent_loop_structured_git_write_requires_confirmation(tmp_path: Path) -> None:
+    repo_path = init_git_repo(tmp_path)
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=repo_path,
+            problem_statement="switch branch",
+            actions=[
+                {
+                    "type": "tool_call",
+                    "action": "git",
+                    "reason": "try branch switch",
+                    "args": {"args": ["checkout", "-b", "demo"]},
+                }
+            ],
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "needs_user_confirmation"
+    assert result.steps[0].action.type == "user_confirmation_request"
+    assert result.steps[0].observation.status == "rejected"
+    assert "git checkout requires confirmation" in str(result.steps[0].observation.error_message)
+
+
 def test_agent_loop_run_command_rejects_undeclared_verification_command(
     tmp_path: Path,
 ) -> None:

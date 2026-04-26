@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-from app.tools.read_only import read_file, search_code
+from app.tools.read_only import glob_file_search, list_dir, read_file, search_code
 
 
 def test_read_file_returns_full_content(tmp_path: Path) -> None:
@@ -188,6 +188,67 @@ def test_read_file_rejects_end_line_beyond_file_length(tmp_path: Path) -> None:
 
     assert result.status == "rejected"
     assert result.error_message == "end_line exceeds file length"
+
+
+def test_list_dir_returns_sorted_directory_entries(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "b.txt").write_text("beta\n", encoding="utf-8")
+    (workspace_path / "src").mkdir()
+    (workspace_path / "src" / "a.py").write_text("alpha\n", encoding="utf-8")
+
+    result = list_dir(workspace_path=workspace_path, relative_path=".")
+
+    assert result.status == "passed"
+    assert result.payload == {
+        "relative_path": ".",
+        "total_entries": 2,
+        "truncated": False,
+        "entries": [
+            {"relative_path": "b.txt", "name": "b.txt", "type": "file", "size_bytes": 5},
+            {"relative_path": "src", "name": "src", "type": "directory", "size_bytes": None},
+        ],
+    }
+
+
+def test_list_dir_rejects_path_escape(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+
+    result = list_dir(workspace_path=workspace_path, relative_path="../outside")
+
+    assert result.status == "rejected"
+    assert result.error_message == "path escapes workspace root"
+
+
+def test_glob_file_search_returns_matching_files(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+    (workspace_path / "src").mkdir()
+    (workspace_path / "src" / "app.py").write_text("print('hi')\n", encoding="utf-8")
+    (workspace_path / "src" / "notes.md").write_text("# notes\n", encoding="utf-8")
+
+    result = glob_file_search(workspace_path=workspace_path, pattern="**/*.py")
+
+    assert result.status == "passed"
+    assert result.payload == {
+        "pattern": "**/*.py",
+        "total_matches": 1,
+        "truncated": False,
+        "matches": [
+            {"relative_path": "src/app.py", "type": "file", "size_bytes": 12},
+        ],
+    }
+
+
+def test_glob_file_search_rejects_absolute_patterns(tmp_path: Path) -> None:
+    workspace_path = tmp_path / "workspace"
+    workspace_path.mkdir()
+
+    result = glob_file_search(workspace_path=workspace_path, pattern="/tmp/*.py")
+
+    assert result.status == "rejected"
+    assert result.error_message == "pattern must be relative"
 
 
 def test_search_code_returns_matches(tmp_path: Path) -> None:
