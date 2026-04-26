@@ -4,13 +4,31 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.agent.provider import AgentObservationRecord, AgentProviderStepInput
+from app.tools.structured import ToolInvocation
+
+
+class ChatToolFunction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    arguments: str
+
+
+class ChatToolCall(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    type: str = "function"
+    function: ChatToolFunction
 
 
 class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     role: str
-    content: str
+    content: str | None = None
+    tool_calls: list[ChatToolCall] | None = None
+    tool_call_id: str | None = None
 
 
 class PromptContextLimits(BaseModel):
@@ -138,6 +156,96 @@ def summarize_observation_record(
     }
 
 
+def _tool_result_content(
+    record: AgentObservationRecord,
+    *,
+    limits: PromptContextLimits,
+    secret_values: list[str],
+) -> str:
+    return json.dumps(
+        summarize_observation_record(
+            record,
+            limits=limits,
+            secret_values=secret_values,
+        ),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def _tool_call_message(invocation: ToolInvocation) -> ChatToolCall:
+    if invocation.id is None:
+        raise ValueError("tool invocation id is required")
+    return ChatToolCall(
+        id=invocation.id,
+        function=ChatToolFunction(
+            name=invocation.name,
+            arguments=json.dumps(invocation.args, ensure_ascii=False, sort_keys=True),
+        ),
+    )
+
+
+def _native_tool_result_messages(
+    records: list[AgentObservationRecord],
+    *,
+    limits: PromptContextLimits,
+    secret_values: list[str],
+) -> list[ChatMessage]:
+    messages: list[ChatMessage] = []
+    current_group_id: str | None = None
+    current_records: list[AgentObservationRecord] = []
+
+    def flush_group() -> None:
+        if not current_records:
+            return
+        messages.append(
+            ChatMessage(
+                role="assistant",
+                tool_calls=[
+                    _tool_call_message(record.tool_invocation)
+                    for record in current_records
+                    if record.tool_invocation is not None
+                ],
+            )
+        )
+        for record in current_records:
+            invocation = record.tool_invocation
+            if invocation is None or invocation.id is None:
+                continue
+            messages.append(
+                ChatMessage(
+                    role="tool",
+                    tool_call_id=invocation.id,
+                    content=_tool_result_content(
+                        record,
+                        limits=limits,
+                        secret_values=secret_values,
+                    ),
+                )
+            )
+
+    for record in records:
+        invocation = record.tool_invocation
+        if (
+            invocation is None
+            or invocation.id is None
+            or invocation.source != "openai_tool_call"
+        ):
+            flush_group()
+            current_group_id = None
+            current_records = []
+            continue
+        group_id = invocation.group_id or invocation.id
+        if current_records and group_id != current_group_id:
+            flush_group()
+            current_records = []
+        current_group_id = group_id
+        current_records.append(record)
+
+    flush_group()
+    return messages
+
+
 def _system_prompt() -> str:
     return (
         "You are MendCode's action planner. Return exactly one JSON object and no prose. "
@@ -195,10 +303,18 @@ def build_provider_messages(
         "remaining_steps": step_input.remaining_steps,
         "observations": observations,
     }
-    return [
+    messages = [
         ChatMessage(role="system", content=_system_prompt()),
         ChatMessage(
             role="user",
             content=json.dumps(user_context, ensure_ascii=False, sort_keys=True),
         ),
     ]
+    messages.extend(
+        _native_tool_result_messages(
+            step_input.observations[-context_limits.max_observations :],
+            limits=context_limits,
+            secret_values=secrets,
+        )
+    )
+    return messages

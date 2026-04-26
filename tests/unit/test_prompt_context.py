@@ -1,6 +1,7 @@
 from app.agent.prompt_context import PromptContextLimits, build_provider_messages
 from app.agent.provider import AgentObservationRecord, AgentProviderStepInput
 from app.schemas.agent_action import Observation, ToolCallAction
+from app.tools.structured import ToolInvocation
 
 
 def test_provider_messages_include_repair_contract_and_allowed_tools() -> None:
@@ -119,3 +120,36 @@ def test_provider_messages_redact_secrets() -> None:
     combined = "\n".join(message.content for message in messages)
     assert "secret-key" not in combined
     assert "[REDACTED]" in combined
+
+
+def test_provider_messages_include_openai_tool_result_messages() -> None:
+    messages = build_provider_messages(
+        AgentProviderStepInput(
+            problem_statement="inspect",
+            verification_commands=[],
+            step_index=2,
+            remaining_steps=4,
+            observations=[
+                AgentObservationRecord(
+                    tool_invocation=ToolInvocation(
+                        id="call_1",
+                        name="read_file",
+                        args={"path": "README.md"},
+                        source="openai_tool_call",
+                        group_id="provider-1",
+                    ),
+                    observation=Observation(
+                        status="succeeded",
+                        summary="Read README.md",
+                        payload={"relative_path": "README.md", "content": "hello"},
+                    ),
+                )
+            ],
+        )
+    )
+
+    assert messages[-2].role == "assistant"
+    assert messages[-2].tool_calls[0].id == "call_1"
+    assert messages[-1].role == "tool"
+    assert messages[-1].tool_call_id == "call_1"
+    assert "Read README.md" in messages[-1].content
