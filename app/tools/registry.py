@@ -1,9 +1,17 @@
+import shlex
+import subprocess
+from pathlib import Path
+
 from app.schemas.agent_action import Observation
 from app.tools.arguments import (
+    ApplyPatchArgs,
+    GitArgs,
     GlobFileSearchArgs,
     ListDirArgs,
     ReadFileArgs,
     RgArgs,
+    RunCommandArgs,
+    RunShellCommandArgs,
 )
 from app.tools.read_only import (
     glob_file_search,
@@ -13,6 +21,22 @@ from app.tools.read_only import (
 )
 from app.tools.schemas import ToolResult
 from app.tools.structured import ToolExecutionContext, ToolRegistry, ToolRisk, ToolSpec
+from app.workspace.command_policy import CommandPolicy
+from app.workspace.executor import execute_verification_command
+from app.workspace.shell_executor import ShellCommandResult, execute_shell_command
+from app.workspace.shell_policy import ShellPolicy
+
+_OUTPUT_EXCERPT_LIMIT = 2000
+
+
+def _trim_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="replace")
+    if len(value) <= _OUTPUT_EXCERPT_LIMIT:
+        return value
+    return value[:_OUTPUT_EXCERPT_LIMIT]
 
 
 def tool_result_to_observation(result: ToolResult) -> Observation:
@@ -22,6 +46,32 @@ def tool_result_to_observation(result: ToolResult) -> Observation:
         summary=result.summary,
         payload=result.payload,
         error_message=result.error_message,
+    )
+
+
+def _failed(
+    summary: str,
+    error_message: str,
+    payload: dict[str, object] | None = None,
+) -> Observation:
+    return Observation(
+        status="failed",
+        summary=summary,
+        payload=payload or {},
+        error_message=error_message,
+    )
+
+
+def _rejected(
+    summary: str,
+    error_message: str,
+    payload: dict[str, object] | None = None,
+) -> Observation:
+    return Observation(
+        status="rejected",
+        summary=summary,
+        payload=payload or {},
+        error_message=error_message,
     )
 
 
@@ -71,6 +121,219 @@ def _execute_rg(args: RgArgs, context: ToolExecutionContext) -> Observation:
     )
 
 
+def _shell_result_to_observation(result: ShellCommandResult) -> Observation:
+    if result.status == "passed":
+        status = "succeeded"
+    elif result.status in {"rejected", "needs_confirmation"}:
+        status = "rejected"
+    else:
+        status = "failed"
+    return Observation(
+        status=status,
+        summary=f"Ran shell command: {result.command}",
+        payload=result.model_dump(mode="json"),
+        error_message=None if status == "succeeded" else result.stderr_excerpt,
+    )
+
+
+def _path_escapes_workspace(path: str, workspace_path: Path) -> bool:
+    candidate = Path(path)
+    resolved = (
+        candidate.resolve()
+        if candidate.is_absolute()
+        else (workspace_path / candidate).resolve()
+    )
+    try:
+        resolved.relative_to(workspace_path.resolve())
+    except ValueError:
+        return True
+    return False
+
+
+def _git_command(args: GitArgs, workspace_path: Path) -> tuple[list[str] | None, str | None]:
+    command = ["git"]
+    if args.operation == "status":
+        command.extend(["status", "--short"])
+    elif args.operation == "diff":
+        command.append("diff")
+    elif args.operation == "log":
+        command.extend(["log", "--oneline", "-n", str(args.limit)])
+    else:
+        return None, f"unsupported git operation: {args.operation}"
+
+    if args.path is not None:
+        if _path_escapes_workspace(args.path, workspace_path):
+            return None, "git path escapes workspace root"
+        command.extend(["--", args.path])
+    return command, None
+
+
+def _git(args: GitArgs, context: ToolExecutionContext) -> Observation:
+    command_parts, error_message = _git_command(args, context.workspace_path)
+    if error_message is not None:
+        return _rejected("Unable to run git", error_message, payload=args.model_dump(mode="json"))
+    assert command_parts is not None
+    command = shlex.join(command_parts)
+    try:
+        completed = subprocess.run(
+            command_parts,
+            capture_output=True,
+            text=True,
+            cwd=context.workspace_path,
+            timeout=context.settings.verification_timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return _failed(
+            "Unable to run git",
+            f"git command timed out after {context.settings.verification_timeout_seconds} seconds",
+            payload={
+                "command": command,
+                "stdout_excerpt": _trim_output(exc.output),
+                "stderr_excerpt": _trim_output(exc.stderr),
+            },
+        )
+    except OSError as exc:
+        return _failed("Unable to run git", str(exc), payload={"command": command})
+
+    payload = {
+        "command": command,
+        "exit_code": completed.returncode,
+        "stdout_excerpt": _trim_output(completed.stdout),
+        "stderr_excerpt": _trim_output(completed.stderr),
+    }
+    if completed.returncode != 0:
+        return _failed(
+            "Unable to run git",
+            completed.stderr.strip() or "git command failed",
+            payload=payload,
+        )
+    return Observation(status="succeeded", summary=f"Ran git: {command}", payload=payload)
+
+
+def _run_shell_command(args: RunShellCommandArgs, context: ToolExecutionContext) -> Observation:
+    if not args.command.strip():
+        return _rejected(
+            "Unable to run shell command",
+            "command must not be empty",
+            payload={"command": args.command},
+        )
+    policy = ShellPolicy(
+        allowed_root=context.workspace_path,
+        timeout_seconds=context.settings.verification_timeout_seconds,
+    )
+    result = execute_shell_command(command=args.command, cwd=context.workspace_path, policy=policy)
+    return _shell_result_to_observation(result)
+
+
+def _run_command(args: RunCommandArgs, context: ToolExecutionContext) -> Observation:
+    if not args.command.strip():
+        return _rejected(
+            "Unable to run command",
+            "command must not be empty",
+            payload={"command": args.command},
+        )
+    policy = CommandPolicy(
+        allowed_commands=context.verification_commands,
+        allowed_root=context.workspace_path,
+        timeout_seconds=context.settings.verification_timeout_seconds,
+    )
+    result = execute_verification_command(
+        command=args.command,
+        cwd=context.workspace_path,
+        policy=policy,
+    )
+    status = "succeeded" if result.status == "passed" else result.status
+    if status == "timed_out":
+        status = "failed"
+    return Observation(
+        status=status,
+        summary=f"Ran command: {args.command}",
+        payload=result.model_dump(mode="json"),
+        error_message=None if result.status == "passed" else result.stderr_excerpt,
+    )
+
+
+def _strip_patch_prefix(path: str) -> str:
+    if path.startswith(("a/", "b/")):
+        return path[2:]
+    return path
+
+
+def _patch_paths(patch: str) -> list[str]:
+    paths: list[str] = []
+    for line in patch.splitlines():
+        if line.startswith("diff --git "):
+            parts = shlex.split(line)
+            if len(parts) >= 4:
+                paths.extend([_strip_patch_prefix(parts[2]), _strip_patch_prefix(parts[3])])
+        elif line.startswith("--- ") or line.startswith("+++ "):
+            path = line[4:].split("\t", maxsplit=1)[0].strip()
+            if path != "/dev/null":
+                paths.append(_strip_patch_prefix(path))
+    return paths
+
+
+def _validate_patch_paths(paths: list[str], workspace_path: Path) -> str | None:
+    for path in paths:
+        if path == "/dev/null":
+            continue
+        if _path_escapes_workspace(path, workspace_path):
+            return f"patch path escapes workspace root: {path}"
+    return None
+
+
+def _apply_patch(args: ApplyPatchArgs, context: ToolExecutionContext) -> Observation:
+    paths = [*args.files_to_modify, *_patch_paths(args.patch)]
+    error_message = _validate_patch_paths(paths, context.workspace_path)
+    if error_message is not None:
+        return _rejected(
+            "Unable to apply patch",
+            error_message,
+            payload={"paths": paths},
+        )
+
+    command = ["git", "apply", "--whitespace=nowarn", "-"]
+    try:
+        completed = subprocess.run(
+            command,
+            input=args.patch,
+            capture_output=True,
+            text=True,
+            cwd=context.workspace_path,
+            timeout=context.settings.verification_timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return _failed(
+            "Unable to apply patch",
+            f"git apply timed out after {context.settings.verification_timeout_seconds} seconds",
+            payload={
+                "command": shlex.join(command),
+                "stdout_excerpt": exc.output or "",
+                "stderr_excerpt": exc.stderr or "",
+                "paths": paths,
+            },
+        )
+    except OSError as exc:
+        return _failed("Unable to apply patch", str(exc), payload={"command": shlex.join(command)})
+
+    payload = {
+        "command": shlex.join(command),
+        "exit_code": completed.returncode,
+        "stdout_excerpt": completed.stdout,
+        "stderr_excerpt": completed.stderr,
+        "paths": paths,
+    }
+    if completed.returncode != 0:
+        return _failed(
+            "Unable to apply patch",
+            completed.stderr.strip() or "git apply failed",
+            payload=payload,
+        )
+    return Observation(status="succeeded", summary="Applied patch", payload=payload)
+
+
 def default_tool_registry() -> ToolRegistry:
     return ToolRegistry(
         [
@@ -101,6 +364,34 @@ def default_tool_registry() -> ToolRegistry:
                 args_model=RgArgs,
                 risk_level=ToolRisk.READ_ONLY,
                 executor=_execute_rg,
+            ),
+            ToolSpec(
+                name="git",
+                description="Run a structured read-only git operation.",
+                args_model=GitArgs,
+                risk_level=ToolRisk.READ_ONLY,
+                executor=_git,
+            ),
+            ToolSpec(
+                name="run_shell_command",
+                description="Run a shell command through the restricted shell policy.",
+                args_model=RunShellCommandArgs,
+                risk_level=ToolRisk.SHELL_RESTRICTED,
+                executor=_run_shell_command,
+            ),
+            ToolSpec(
+                name="run_command",
+                description="Run a declared verification command.",
+                args_model=RunCommandArgs,
+                risk_level=ToolRisk.SHELL_RESTRICTED,
+                executor=_run_command,
+            ),
+            ToolSpec(
+                name="apply_patch",
+                description="Apply a unified diff patch to the workspace.",
+                args_model=ApplyPatchArgs,
+                risk_level=ToolRisk.WRITE_WORKTREE,
+                executor=_apply_patch,
             ),
         ]
     )

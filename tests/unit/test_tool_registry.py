@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -167,7 +168,8 @@ def test_package_exports_structured_tool_aliases() -> None:
 def test_default_registry_contains_read_only_tools() -> None:
     registry = default_tool_registry()
 
-    assert registry.names() == ["glob_file_search", "list_dir", "read_file", "rg"]
+    for tool_name in ["glob_file_search", "list_dir", "read_file", "rg"]:
+        assert tool_name in registry.names()
 
 
 def test_tool_result_to_observation_maps_passed_result(tmp_path: Path) -> None:
@@ -230,3 +232,112 @@ def test_registry_rejects_bad_read_file_args(tmp_path: Path) -> None:
 
     assert observation.status == "rejected"
     assert observation.summary == "Invalid tool arguments"
+
+
+def init_repo(path: Path) -> Path:
+    repo = path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+    return repo
+
+
+def test_default_registry_contains_command_tools() -> None:
+    registry = default_tool_registry()
+
+    assert "git" in registry.names()
+    assert "apply_patch" in registry.names()
+    assert "run_shell_command" in registry.names()
+    assert "run_command" in registry.names()
+
+
+def test_git_status_uses_structured_operation(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+    (repo / "README.md").write_text("demo\n", encoding="utf-8")
+    registry = default_tool_registry()
+    context = ToolExecutionContext(
+        workspace_path=repo,
+        settings=settings_for(tmp_path),
+        verification_commands=[],
+    )
+
+    observation = registry.get("git").execute({"operation": "status"}, context)
+
+    assert observation.status == "succeeded"
+    assert observation.payload["command"] == "git status --short"
+    assert "README.md" in observation.payload["stdout_excerpt"]
+
+
+def test_git_log_uses_structured_operation(tmp_path: Path) -> None:
+    repo = init_repo(tmp_path)
+    (repo / "README.md").write_text("demo\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "initial commit"], cwd=repo, check=True)
+    registry = default_tool_registry()
+    context = ToolExecutionContext(
+        workspace_path=repo,
+        settings=settings_for(tmp_path),
+        verification_commands=[],
+    )
+
+    observation = registry.get("git").execute({"operation": "log", "limit": 1}, context)
+
+    assert observation.status == "succeeded"
+    assert observation.payload["command"] == "git log --oneline -n 1"
+    assert "initial commit" in observation.payload["stdout_excerpt"]
+
+
+def test_git_rejects_unknown_operation_before_shell(tmp_path: Path) -> None:
+    registry = default_tool_registry()
+    context = ToolExecutionContext(
+        workspace_path=tmp_path,
+        settings=settings_for(tmp_path),
+        verification_commands=[],
+    )
+
+    observation = registry.get("git").execute({"operation": "reset"}, context)
+
+    assert observation.status == "rejected"
+    assert observation.summary == "Invalid tool arguments"
+
+
+def test_run_command_keeps_verification_allowlist(tmp_path: Path) -> None:
+    registry = default_tool_registry()
+    context = ToolExecutionContext(
+        workspace_path=tmp_path,
+        settings=settings_for(tmp_path),
+        verification_commands=[],
+    )
+
+    observation = registry.get("run_command").execute(
+        {"command": "python -c 'print(123)'"},
+        context,
+    )
+
+    assert observation.status == "rejected"
+    assert "declared" in str(observation.error_message)
+
+
+def test_apply_patch_rejects_repo_escaping_path(tmp_path: Path) -> None:
+    registry = default_tool_registry()
+    context = ToolExecutionContext(
+        workspace_path=tmp_path,
+        settings=settings_for(tmp_path),
+        verification_commands=[],
+    )
+    patch = "\n".join(
+        [
+            "diff --git a/../outside.txt b/../outside.txt",
+            "--- a/../outside.txt",
+            "+++ b/../outside.txt",
+            "@@ -0,0 +1 @@",
+            "+bad",
+            "",
+        ]
+    )
+
+    observation = registry.get("apply_patch").execute({"patch": patch}, context)
+
+    assert observation.status == "rejected"
+    assert "patch path escapes workspace root" in str(observation.error_message)
