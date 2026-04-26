@@ -1,4 +1,6 @@
 .env
+.venv/
+mendcode.egg-info/
 .worktrees/
 data/traces/
 data/evals/
