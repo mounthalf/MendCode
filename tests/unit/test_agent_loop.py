@@ -200,6 +200,33 @@ def test_agent_loop_executes_structured_git_status_action(tmp_path: Path) -> Non
     assert "README.md" in result.steps[0].observation.payload["stdout_excerpt"]
 
 
+def test_agent_loop_preserves_legacy_json_git_status_action(tmp_path: Path) -> None:
+    repo_path = init_git_repo(tmp_path)
+    (repo_path / "README.md").write_text("demo\n", encoding="utf-8")
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=repo_path,
+            problem_statement="check status",
+            actions=[
+                {
+                    "type": "tool_call",
+                    "action": "git",
+                    "reason": "inspect repository state",
+                    "args": {"args": ["status", "--short"]},
+                },
+                {"type": "final_response", "status": "completed", "summary": "done"},
+            ],
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "completed"
+    assert result.steps[0].observation.status == "succeeded"
+    assert result.steps[0].observation.payload["command"] == "git status --short"
+    assert "README.md" in result.steps[0].observation.payload["stdout_excerpt"]
+
+
 def test_agent_loop_executes_structured_rg_action(tmp_path: Path) -> None:
     (tmp_path / "src.py").write_text("alpha\nbeta alpha\n", encoding="utf-8")
 
@@ -593,6 +620,39 @@ def test_agent_loop_native_tool_requires_confirmation_in_safe_mode(tmp_path: Pat
     assert result.status == "needs_user_confirmation"
     assert result.steps[0].action.type == "user_confirmation_request"
     assert result.steps[0].observation.status == "rejected"
+
+
+def test_agent_loop_native_failed_observation_blocks_completed_final_response(
+    tmp_path: Path,
+) -> None:
+    provider = NativeToolProvider(
+        [
+            [
+                ToolInvocation(
+                    id="call_1",
+                    name="read_file",
+                    args={},
+                    source="openai_tool_call",
+                )
+            ],
+            {"type": "final_response", "status": "completed", "summary": "done"},
+        ]
+    )
+
+    result = run_agent_loop(
+        AgentLoopInput(
+            repo_path=tmp_path,
+            problem_statement="read missing path",
+            provider=provider,
+            step_budget=4,
+        ),
+        settings_for(tmp_path),
+    )
+
+    assert result.status == "failed"
+    assert result.summary == "Agent loop ended with failed observations"
+    assert result.steps[0].observation.status == "rejected"
+    assert result.steps[1].action.type == "final_response"
 
 
 def test_agent_loop_turns_provider_failure_into_failed_result(tmp_path: Path) -> None:

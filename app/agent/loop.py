@@ -430,7 +430,13 @@ def _execute_tool_call(
     repo_path: Path,
     settings: Settings,
     verification_commands: list[str],
+    allow_legacy_git: bool = True,
 ) -> Observation:
+    if allow_legacy_git and action.action == "git" and (
+        "args" in action.args or "command" in action.args
+    ):
+        return _run_git(repo_path, settings, action.args)
+
     registry = default_tool_registry()
     try:
         registry.get(action.action)
@@ -577,8 +583,13 @@ def _handle_tool_call_action(
     settings: Settings,
     permission_mode: PermissionMode,
     verification_commands: list[str],
+    allow_legacy_git: bool = True,
 ) -> _HandledAction:
-    shell_policy_command = _shell_policy_command_for_action(action)
+    shell_policy_command = (
+        _shell_policy_command_for_action(action)
+        if allow_legacy_git or action.action != "git"
+        else None
+    )
     if shell_policy_command is not None:
         shell_decision = ShellPolicy(
             allowed_root=workspace_path,
@@ -620,6 +631,7 @@ def _handle_tool_call_action(
             repo_path=workspace_path,
             settings=settings,
             verification_commands=verification_commands,
+            allow_legacy_git=allow_legacy_git,
         )
     return _HandledAction(
         stop=False,
@@ -676,6 +688,7 @@ def _handle_tool_invocation(
         settings=settings,
         permission_mode=permission_mode,
         verification_commands=verification_commands,
+        allow_legacy_git=False,
     )
 
 
